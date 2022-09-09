@@ -3,29 +3,30 @@
 Hello Developers, in this tutorial we'll show how to quantize a torch Tensor with ppq TensorQuantizationConfig.
 First of all, we'd like to give you an example of how to use pytorch native functions to quantize a tensor:
 
-```
+```python
 import torch
+
 v_fp32 = torch.tensor([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 scale, clip_min, clip_max = 2, -128, 127
 v_int8 = torch.clip(torch.round(v_fp32 / scale), min=clip_min, max=clip_max)
-print(f'Torch Quantized v_int8: {v_int8}')
+print(f"Torch Quantized v_int8: {v_int8}")
 # tensor([0., 1., 2., 2., 2., 3., 4., 4., 4., 5.])
 
 # let's dequant v_int8
 dqv_fp32 = v_int8 * scale
-print(f'Torch Dequantized dqv_fp32: {dqv_fp32}')
+print(f"Torch Dequantized dqv_fp32: {dqv_fp32}")
 # tensor([ 0.,  2.,  4.,  4.,  4.,  6.,  8.,  8.,  8., 10.])
 ```
 
 Here we take an "SYMMETRICAL" quantization on our tensor with scale = 2, the clip min and max was set as -128, 127 respectively. The quant function used here is:
 
-```
+```python
 y = torch.clip(torch.round(x / scale), min=clip_min, max=clip_max)
 ```
 
 Similarly, the dequant function used here is:
 
-```
+```python
 y = x * scale
 ```
 
@@ -33,19 +34,22 @@ y = x * scale
 
 To quantize a convolution layer with pytorch, a resonable way is to quantize convolution input, weight before its execution, and quantize its output after we got its result. Following code block is a example to show how a convolution layer get quantized:
 
-```
+```python
 import torch
 import torch.nn.functional as F
 
-def quant(tensor: torch.Tensor, scale = 0.1, clip_min = -128, clip_max = 127):
+
+def quant(tensor: torch.Tensor, scale=0.1, clip_min=-128, clip_max=127):
     y = torch.clip(torch.round(tensor / scale), min=clip_min, max=clip_max)
-    y = y.char() # convert y to int8 dtype
+    y = y.char()  # convert y to int8 dtype
     return y
 
-def dequant(tensor: torch.Tensor, scale = 0.1):
+
+def dequant(tensor: torch.Tensor, scale=0.1):
     y = tensor * scale
-    y = y.float() # convert y to fp32 dtype
+    y = y.float()  # convert y to fp32 dtype
     return y
+
 
 # fp32 version
 v_fp32 = torch.rand(size=[1, 3, 96, 96])
@@ -74,37 +78,51 @@ Gradient is necessary in PTQ, it enables us to finetuning your network for a bet
 
 Now is time to play with PPQ Qlinear functions, let's start with import them from PPQ libraries:
 
-```
+```python
 from ppq import TensorQuantizationConfig
-from ppq.quantization.qfunction.linear import PPQLinearQuant_toInt, PPQLinearQuantFunction
+from ppq.quantization.qfunction.linear import (
+    PPQLinearQuant_toInt,
+    PPQLinearQuantFunction,
+)
 ```
 
 PPQLinearQuantFunction and PPQLinearQuant_toInt are quant(dequant) functions used in PPQ executor: PPQLinearQuant_toInt will quantize a fp32 tensor to int8, PPQLinearQuantFunction will quantize and dequantize a fp32 tensor. TensorQuantizationConfig is the data structure to describe quantization parameter(scale, offset, and etc.). In other words, TensorQuantizationConfig tells how to quantize your tensor.
 
-```
+```python
 import torch
 from ppq import TensorQuantizationConfig
 from ppq.core import *
-from ppq.quantization.qfunction.linear import PPQLinearQuant_toInt, PPQLinearQuantFunction
+from ppq.quantization.qfunction.linear import (
+    PPQLinearQuant_toInt,
+    PPQLinearQuantFunction,
+)
 
 v_fp32 = torch.tensor([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 tqc = TensorQuantizationConfig(
-    policy = (QuantizationPolicy(
-        QuantizationProperty.SYMMETRICAL +
-        QuantizationProperty.LINEAR +
-        QuantizationProperty.PER_TENSOR
-    )),
-    rounding = RoundingPolicy.ROUND_HALF_EVEN,
-    num_of_bits = 8,
-    quant_min = -128, quant_max = 128,
-    scale  = torch.tensor([2.0]),
-    offset = torch.tensor([0.0]),
-    observer_algorithm = None,
-    state = QuantizationStates.ACTIVATED)
-v_int8   = PPQLinearQuant_toInt(tensor=v_fp32, config=tqc)
+    policy=(
+        QuantizationPolicy(
+            QuantizationProperty.SYMMETRICAL
+            + QuantizationProperty.LINEAR
+            + QuantizationProperty.PER_TENSOR
+        )
+    ),
+    rounding=RoundingPolicy.ROUND_HALF_EVEN,
+    num_of_bits=8,
+    quant_min=-128,
+    quant_max=128,
+    scale=torch.tensor([2.0]),
+    offset=torch.tensor([0.0]),
+    observer_algorithm=None,
+    state=QuantizationStates.ACTIVATED,
+)
+v_int8 = PPQLinearQuant_toInt(tensor=v_fp32, config=tqc)
 dqv_fp32 = PPQLinearQuantFunction(tensor=v_fp32, config=tqc)
-print(f'PPQ Quantized v_int8: {v_int8}') # tensor([0, 1, 2, 2, 2, 3, 4, 4, 4, 5], dtype=torch.int32)
-print(f'PPQ Dequantized dqv_fp32: {dqv_fp32}') # tensor([ 0.,  2.,  4.,  4.,  4.,  6.,  8.,  8.,  8., 10.])
+print(
+    f"PPQ Quantized v_int8: {v_int8}"
+)  # tensor([0, 1, 2, 2, 2, 3, 4, 4, 4, 5], dtype=torch.int32)
+print(
+    f"PPQ Dequantized dqv_fp32: {dqv_fp32}"
+)  # tensor([ 0.,  2.,  4.,  4.,  4.,  6.,  8.,  8.,  8., 10.])
 ```
 
 A TensorQuantizationConfig object is initialized here, the attributes of TensorQuantizationConfig are QuantizationPolicy, RoundingPolicy, num_of_bits, quant_min, quant_max, scale, offset and QuantizationStates.
@@ -141,21 +159,21 @@ Formula: quant(x) = clip(round(x / scale, RoundingPolicy), -128, 127)
 PPQ Supports 7 different rounding policies now.
 Take a look at https://en.wikipedia.org/wiki/Rounding
 
-```
-ROUND_HALF_EVEN            = 0
-ROUND_HALF_UP              = 1
-ROUND_HALF_DOWN            = 2
-ROUND_HALF_TOWARDS_ZERO    = 3
-ROUND_HALF_FAR_FORM_ZERO   = 4
-ROUND_TO_NEAR_INT          = 5
-ROUND_UP                   = 6
+```python
+ROUND_HALF_EVEN = 0
+ROUND_HALF_UP = 1
+ROUND_HALF_DOWN = 2
+ROUND_HALF_TOWARDS_ZERO = 3
+ROUND_HALF_FAR_FORM_ZERO = 4
+ROUND_TO_NEAR_INT = 5
+ROUND_UP = 6
 ```
 
 ## QParams
 
 Scale, offset, quant_min, quant_max are all called as qparams, they are parameters used in quant function:
 
-```
+```python
 quant(x) = clip(round(x / scale, RoundingPolicy), -128, 127)
 ```
 
