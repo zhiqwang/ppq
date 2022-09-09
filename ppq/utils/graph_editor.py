@@ -1,6 +1,6 @@
 from typing import List
-from ppq.IR import BaseGraph
-from ppq.IR import GraphFormatter
+
+from ppq.IR import BaseGraph, GraphFormatter
 
 
 def truncate_graph(graph: BaseGraph, outputs: List[str]):
@@ -26,7 +26,7 @@ def truncate_graph(graph: BaseGraph, outputs: List[str]):
     """
     for output in outputs:
         if output not in graph.variables:
-            raise KeyError(f'Can not find variable {output} in current graph.')
+            raise KeyError(f"Can not find variable {output} in current graph.")
     processor = GraphFormatter(graph)
 
     for output in outputs:

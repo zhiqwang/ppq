@@ -15,39 +15,42 @@ try:
     import pycuda.driver as cuda
     import tensorrt as trt
 except ImportError as e:
-    raise ImportError('Install tensorRT and related dependencies before using tensorRT export.')
+    raise ImportError("Install tensorRT and related dependencies before using tensorRT export.")
 import os
 
 TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
 
 
 class HostDeviceMem(object):
-    #Simple helper data class that's a little nicer to use than a 2-tuple.
+    # Simple helper data class that's a little nicer to use than a 2-tuple.
     def __init__(self, host_mem, device_mem):
         self.host = host_mem
         self.device = device_mem
+
     def __str__(self):
-        return 'Host:\n' + str(self.host) + '\nDevice:\n' + str(self.device)
+        return "Host:\n" + str(self.host) + "\nDevice:\n" + str(self.device)
+
     def __repr__(self):
         return self.__str__()
 
 
-class TensorRTEngine():
+class TensorRTEngine:
     """TensorRT Engine is a helper class for tensorRT engine inference. it
     wraps tensorRT Engine as a normal torch module.
 
     ATTENTION: you can not use this class together with other pytorch function.
         it will cause some unexpected CUDNN errors.
     """
+
     def __init__(self, engine_path: str) -> None:
         self._runtime = trt.Runtime(TRT_LOGGER)
-        self._engine  = self._runtime.deserialize_cuda_engine(self.load_from_file(engine_path))
+        self._engine = self._runtime.deserialize_cuda_engine(self.load_from_file(engine_path))
         self._cuda_stream = cuda.Stream()
 
     def load_from_file(self, engine_path: str) -> bytes:
         if not os.path.isfile(engine_path):
-            raise FileNotFoundError(f'Can not locate TensorRT engine file at {engine_path}')
-        with open(engine_path, 'rb') as file:
+            raise FileNotFoundError(f"Can not locate TensorRT engine file at {engine_path}")
+        with open(engine_path, "rb") as file:
             return file.read()
 
     def alloc_buffer(self):
@@ -73,8 +76,9 @@ class TensorRTEngine():
                 outputs.append(HostDeviceMem(host_mem, device_mem))
         return inputs, outputs, bindings
 
-    def inference(self, inputs: List[HostDeviceMem], bindings: List[int],
-        outputs: List[HostDeviceMem], context) -> List[numpy.ndarray]:
+    def inference(
+        self, inputs: List[HostDeviceMem], bindings: List[int], outputs: List[HostDeviceMem], context
+    ) -> List[numpy.ndarray]:
         """Inputs and outputs are expected to be lists of HostDeviceMem
         objects."""
         # Transfer input data to the GPU.
@@ -97,25 +101,26 @@ class TensorRTEngine():
 
         feed_list = []
         if isinstance(inputs, torch.Tensor):
-            if len(input_names) != 1: raise ValueError(
-                f'TensorRT Engine needs {len(input_names)} input values, '
-                'while only one torch Tensor was given.')
+            if len(input_names) != 1:
+                raise ValueError(
+                    f"TensorRT Engine needs {len(input_names)} input values, " "while only one torch Tensor was given."
+                )
             feed_list.append(convert_any_to_numpy(inputs))
         elif isinstance(inputs, list):
             for value in inputs:
                 if not isinstance(value, torch.Tensor):
-                    raise TypeError(f'PPQ feeds tensorRT Engine with only torch.Tensor, '
-                    f'however {type(value)} was gievn.')
+                    raise TypeError(
+                        f"PPQ feeds tensorRT Engine with only torch.Tensor, " f"however {type(value)} was gievn."
+                    )
                 feed_list.append(convert_any_to_numpy(value))
         elif isinstance(inputs, dict):
             feed_list = [None for _ in input_names]
             for name, value in inputs.items():
                 if name not in input_names:
-                    raise KeyError(f'Can not feed value of variable: {name}, '
-                    'can not find it in tensorRT engine.')
+                    raise KeyError(f"Can not feed value of variable: {name}, " "can not find it in tensorRT engine.")
                 feed_list[input_names.index(name)] = convert_any_to_numpy(value)
         else:
-            raise TypeError('Can not parse feeding value.')
+            raise TypeError("Can not parse feeding value.")
 
         return feed_list
 
@@ -132,6 +137,7 @@ class TensorRTEngine():
             result = self.inference(inputs=inputs_mem, bindings=bindings, outputs=outputs_mem, context=context)
             return [convert_any_to_torch_tensor(value) for value in result]
 
-if __name__ == '__main__':
-    engine = TensorRTEngine('trt.engine')
+
+if __name__ == "__main__":
+    engine = TensorRTEngine("trt.engine")
     print(engine.forward(torch.zeros(1, 3, 224, 224))[0].shape)

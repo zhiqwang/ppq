@@ -9,4 +9,5 @@ EXTENSION_BACKEND_TABLE = DEFAULT_BACKEND_TABLE.copy()
 def Sample_Forward():
     return None
 
-EXTENSION_BACKEND_TABLE['Sample_Function'] = Sample_Forward
+
+EXTENSION_BACKEND_TABLE["Sample_Function"] = Sample_Forward

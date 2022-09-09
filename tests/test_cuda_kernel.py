@@ -1,9 +1,10 @@
-from ppq.core import CUDA
-from ppq import ppq_tensor_round, RoundingPolicy
-import torch
 from math import sqrt
 
-EXECUTING_DEVICE = 'cuda'
+import torch
+from ppq import ppq_tensor_round, RoundingPolicy
+from ppq.core import CUDA
+
+EXECUTING_DEVICE = "cuda"
 TEST_TIMES = 128
 Q_MIN, Q_MAX = -128, 127
 ROUNDING_POLICY = RoundingPolicy.ROUND_HALF_EVEN
@@ -20,8 +21,7 @@ for i in range(TEST_TIMES):
     qt = (qt - o) * s
 
     # t = t.int()
-    cuda_qt = CUDA.LinearQuantize_T(
-        t, s, o, Q_MIN, Q_MAX, ROUNDING_POLICY.value)
+    cuda_qt = CUDA.LinearQuantize_T(t, s, o, Q_MIN, Q_MAX, ROUNDING_POLICY.value)
 
     assert torch.abs(cuda_qt - qt).max().item() < 1e-6
 
@@ -40,8 +40,7 @@ for i in range(TEST_TIMES):
     qt = (qt - o) * s
 
     # t = t.int()
-    cuda_qt = CUDA.LinearQuantize_C(
-        t, s, o, c, Q_MIN, Q_MAX, ROUNDING_POLICY.value)
+    cuda_qt = CUDA.LinearQuantize_C(t, s, o, c, Q_MIN, Q_MAX, ROUNDING_POLICY.value)
     assert torch.abs(cuda_qt - qt).max().item() < 1e-6
 
 # Test Histogram
@@ -59,7 +58,7 @@ for i in range(TEST_TIMES):
 
 
 # Test Backwards
-t = torch.Tensor([112,75,3,5,-5,6,7,8,9,-25]*100).to(EXECUTING_DEVICE)
+t = torch.Tensor([112, 75, 3, 5, -5, 6, 7, 8, 9, -25] * 100).to(EXECUTING_DEVICE)
 s = torch.Tensor([2]).to(EXECUTING_DEVICE).float()
 o = torch.Tensor([0]).to(EXECUTING_DEVICE).float()
 qt = CUDA.LinearQuantize_T(t, s, o, Q_MIN, Q_MAX)
@@ -79,7 +78,7 @@ for i in range(50):
     print(gs)
     print(go)
 
-t = torch.rand(size=[3,3,224,224]).to(EXECUTING_DEVICE)
+t = torch.rand(size=[3, 3, 224, 224]).to(EXECUTING_DEVICE)
 s = torch.Tensor([1, 1, 1]).float().to(EXECUTING_DEVICE)
 o = torch.zeros(size=[3]).to(EXECUTING_DEVICE).float()
 
@@ -103,14 +102,14 @@ for i in range(1):
 
 
 # Test Clip
-t = torch.Tensor([-1, -2, -3, 1,2,3,4,5,6,7,8,9,10]).to(EXECUTING_DEVICE)
-r = torch.Tensor([0,0,0,0,0,0,0,0,0,0,0,0,0]).to(EXECUTING_DEVICE)
+t = torch.Tensor([-1, -2, -3, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).to(EXECUTING_DEVICE)
+r = torch.Tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]).to(EXECUTING_DEVICE)
 l = torch.Tensor([2]).to(EXECUTING_DEVICE)
 t = CUDA.TensorClip_T(t, r, l)
 print(t)
 
-t = torch.Tensor([[1,2,3], [4,5,6], [-1,-2,-3]]).to(EXECUTING_DEVICE)
-r = torch.Tensor([[0,0,0], [4,5,6], [0,0,0]]).to(EXECUTING_DEVICE)
+t = torch.Tensor([[1, 2, 3], [4, 5, 6], [-1, -2, -3]]).to(EXECUTING_DEVICE)
+r = torch.Tensor([[0, 0, 0], [4, 5, 6], [0, 0, 0]]).to(EXECUTING_DEVICE)
 l = torch.Tensor([1, 2, 2]).to(EXECUTING_DEVICE)
 t = CUDA.TensorClip_C(t, r, l, 0)
 print(t)
@@ -126,7 +125,7 @@ for i in range(1000):
 
 # Test Rounding loss
 for i in range(100):
-    t = torch.rand(size=[3,3,224,224]).to(EXECUTING_DEVICE)
+    t = torch.rand(size=[3, 3, 224, 224]).to(EXECUTING_DEVICE)
     s = torch.Tensor([1]).float().to(EXECUTING_DEVICE)
     o = torch.zeros(size=[1]).to(EXECUTING_DEVICE).float()
 
@@ -143,7 +142,7 @@ for i in range(100):
 
 # Test Rounding loss
 for i in range(100):
-    t = torch.rand(size=[3,3,224,224]).to(EXECUTING_DEVICE)
+    t = torch.rand(size=[3, 3, 224, 224]).to(EXECUTING_DEVICE)
     s = torch.Tensor([1, 2, 3]).float().to(EXECUTING_DEVICE)
     o = torch.zeros(size=[3]).to(EXECUTING_DEVICE).float()
 

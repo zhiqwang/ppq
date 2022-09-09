@@ -31,19 +31,15 @@ class ParameterBakingPass(QuantizationOptimizationPass):
     Args:
         quantize_function (BaseQuantFunction): a BaseQuantFunction instance to quantize all parameters.
     """
+
     def __init__(self) -> None:
-        super().__init__(name='PPQ Parameter Baking Pass')
+        super().__init__(name="PPQ Parameter Baking Pass")
         self._quantize_function = PPQLinearQuantFunction
 
-    @ empty_ppq_cache
-    def optimize(
-        self,
-        graph: BaseGraph,
-        dataloader: Iterable,
-        executor: BaseGraphExecutor,
-        **kwargs
-    ) -> None:
+    @empty_ppq_cache
+    def optimize(self, graph: BaseGraph, dataloader: Iterable, executor: BaseGraphExecutor, **kwargs) -> None:
 
         for _, operation in graph.operations.items():
-            if not isinstance(operation, QuantableOperation): continue
+            if not isinstance(operation, QuantableOperation):
+                continue
             operation.baking_parameters(self._quantize_function)

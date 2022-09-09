@@ -7,17 +7,18 @@ import numpy as np
 import tensorrt as trt
 
 import trt_infer
+
 # Conv_41 + PWN(PWN(Sigmoid_42), Mul_43): 0.028672ms
 # Conv_41: 0.045056ms
 # PWN(PWN(Sigmoid_42), Mul_43): 0.03584ms
 
 # Nvidia Nsight Performance Profile
-ENGINE_PATH = 'Output/yolov5s.v5(ppq).engine'
-BATCH_SIZE  = 1
+ENGINE_PATH = "Output/yolov5s.v5(ppq).engine"
+BATCH_SIZE = 1
 INPUT_SHAPE = [BATCH_SIZE, 3, 640, 640]
 
 logger = trt.Logger(trt.Logger.ERROR)
-with open(ENGINE_PATH, 'rb') as f, trt.Runtime(logger) as runtime:
+with open(ENGINE_PATH, "rb") as f, trt.Runtime(logger) as runtime:
     engine = runtime.deserialize_cuda_engine(f.read())
 
 with engine.create_execution_context() as context:
@@ -26,6 +27,5 @@ with engine.create_execution_context() as context:
     inputs[0].host = np.zeros(shape=INPUT_SHAPE, dtype=np.float32)
 
     trt_infer.do_inference(
-        context, bindings=bindings, inputs=inputs, 
-        outputs=outputs, stream=stream, batch_size=BATCH_SIZE)
-
+        context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream, batch_size=BATCH_SIZE
+    )

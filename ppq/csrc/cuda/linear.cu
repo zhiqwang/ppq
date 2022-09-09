@@ -149,9 +149,9 @@ void _QuantizeTensor_LT_B(
     float* grad_s,
     float* grad_x
 ){
-    int64_t iter; 
+    int64_t iter;
     float s = scales[0];
-    float inv_s = 1 / s; 
+    float inv_s = 1 / s;
     float o = std::nearbyint(offsets[0]);
     float _clip_min = s * (clip_min - o);
     float _clip_max = s * (clip_max - o);
@@ -205,7 +205,7 @@ __host__ std::vector<Tensor> QuantizeTensor_LT_B(
     Tensor grad_x = at::zeros_like(grad_y);
 
     _QuantizeTensor_LT_B<<<
-        NUM_OF_BLOCK(NUM_OF_ELEMENT(value), NUM_OF_THREADS), 
+        NUM_OF_BLOCK(NUM_OF_ELEMENT(value), NUM_OF_THREADS),
         NUM_OF_THREADS, 0, at::cuda::getCurrentCUDAStream()>>>(
         NUM_OF_ELEMENT(value),
         PTR<float>(value),
@@ -237,7 +237,7 @@ void _QuantizeTensor_LC_B(
     float *       grad_x
 ){
     int channel_idx = blockIdx.x;
-    float s = scales[channel_idx]; float inv_s = 1 / s; 
+    float s = scales[channel_idx]; float inv_s = 1 / s;
     float o = std::nearbyint(offsets[channel_idx]);
     float _clip_min = s * (clip_min - o);
     float _clip_max = s * (clip_max - o);
@@ -283,7 +283,7 @@ void _QuantizeTensor_LC_B(
 
 
 __host__ std::vector<Tensor> QuantizeTensor_LC_B(
-    const Tensor &value, const Tensor &scales, const Tensor &offsets, 
+    const Tensor &value, const Tensor &scales, const Tensor &offsets,
     const Tensor &grad_y, const int clip_min, const int clip_max,
     const Rounding rounding, const int channel_axis
 ){

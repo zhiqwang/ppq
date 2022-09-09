@@ -9,4 +9,5 @@ ACADEMIC_BACKEND_TABLE = DEFAULT_BACKEND_TABLE.copy()
 def Sample_Forward():
     return None
 
-ACADEMIC_BACKEND_TABLE['Sample_Function'] = Sample_Forward
+
+ACADEMIC_BACKEND_TABLE["Sample_Function"] = Sample_Forward

@@ -4,8 +4,7 @@ from typing import Callable, Dict, Iterable, List, Set, Tuple
 
 import torch
 import torch.nn.functional as F
-from ppq.core import (LINEAR_ACTIVATIONS, PASSIVE_OPERATIONS,
-                      PPLCUDA_ACTIVATIONS, TargetPlatform)
+from ppq.core import LINEAR_ACTIVATIONS, PASSIVE_OPERATIONS, PPLCUDA_ACTIVATIONS, TargetPlatform
 from ppq.executor.base import BaseGraphExecutor
 from ppq.IR import BaseGraph, Operation
 from ppq.IR.search import SearchableGraph
@@ -14,17 +13,12 @@ from tqdm import tqdm
 
 from .dispatchers import PPLNNDispatcher
 
-logger = NaiveLogger.get_logger('PPQ')
+logger = NaiveLogger.get_logger("PPQ")
 
 
 class HessianDispatcher:
-
-    def __init__(self,
-                percentage: float,
-                memory_aware: bool,
-                max_iter: int=50,
-                tol: float=1e-3,
-                device: str='cuda'
+    def __init__(
+        self, percentage: float, memory_aware: bool, max_iter: int = 50, tol: float = 1e-3, device: str = "cuda"
     ) -> None:
         self.percentage = percentage
         self.memory_aware = memory_aware
@@ -36,10 +30,10 @@ class HessianDispatcher:
         search_engine = SearchableGraph(graph)
         last_op_names = [var.source_op.name for var in graph.outputs.values() if var.source_op is not None]
         results = search_engine.opset_matching(
-            sp_expr = lambda x: x.name in last_op_names,
-            rp_expr = lambda x,y: True,
-            ep_expr = lambda x: x.is_computing_op,
-            direction = 'up'
+            sp_expr=lambda x: x.name in last_op_names,
+            rp_expr=lambda x, y: True,
+            ep_expr=lambda x: x.is_computing_op,
+            direction="up",
         )
         all_computing_ops, last_computing_ops = set(), set()
         for op in results:
@@ -49,7 +43,6 @@ class HessianDispatcher:
             if op.is_computing_op:
                 all_computing_ops.add(op)
         return all_computing_ops, last_computing_ops
-
 
     def enable_gradient(self, graph: BaseGraph) -> None:
         for op in graph.operations.values():
@@ -63,17 +56,16 @@ class HessianDispatcher:
                 if torch.is_tensor(param.value) and param.value.dtype == torch.float:
                     param.value.requires_grad = False
 
-    def get_params_grad(self,
-                        all_computing_ops: List[Operation],
-                        allow_grad_none: bool=True
+    def get_params_grad(
+        self, all_computing_ops: List[Operation], allow_grad_none: bool = True
     ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         params, grads = [], []
         for op in all_computing_ops:
             params.append(op.parameters[0].value)
             if not allow_grad_none:
-                assert(op.parameters[0].value.grad is not None, f'grad of {op.name} weight is None')
+                assert (op.parameters[0].value.grad is not None, f"grad of {op.name} weight is None")
 
-            grads.append(0. if op.parameters[0].value.grad is None else op.parameters[0].value.grad + 0.)
+            grads.append(0.0 if op.parameters[0].value.grad is None else op.parameters[0].value.grad + 0.0)
         return params, grads
 
     def zero_grad(self, graph: BaseGraph) -> None:
@@ -83,21 +75,21 @@ class HessianDispatcher:
                     param.value.grad.detach_()
                     param.value.grad.zero_()
 
-
-    def hv_product(self,
-                v: List[torch.Tensor],
-                params: List[torch.Tensor],
-                output_names: List[str],
-                all_computing_ops: Set[Operation],
-                executor: BaseGraphExecutor,
-                dataloader: Iterable,
-                calib_steps: int,
-                collate_fn: Callable
+    def hv_product(
+        self,
+        v: List[torch.Tensor],
+        params: List[torch.Tensor],
+        output_names: List[str],
+        all_computing_ops: Set[Operation],
+        executor: BaseGraphExecutor,
+        dataloader: Iterable,
+        calib_steps: int,
+        collate_fn: Callable,
     ) -> Tuple[List[float], List[torch.Tensor]]:
         THv = [torch.zeros(p.size()).to(self.device) for p in params]
         calib_step, num_data = 0, 0
         for calib_epoch in range(ceil(calib_steps / len(dataloader))):
-            for _,data in enumerate(dataloader):
+            for _, data in enumerate(dataloader):
                 if collate_fn is not None:
                     data = collate_fn(data)
                 tmp_num_data = data.size(0)
@@ -108,13 +100,8 @@ class HessianDispatcher:
                 params_, grads_ = self.get_params_grad(all_computing_ops, allow_grad_none=False)
                 self.zero_grad(executor._graph)
 
-                Hessian_v = torch.autograd.grad(grads_,
-                                            params_,
-                                            grad_outputs=v,
-                                            only_inputs=True,
-                                            retain_graph=False)
-                THv = [THv_ + H_ * float(tmp_num_data) + 0. for
-                       THv_, H_ in zip(THv, Hessian_v)]
+                Hessian_v = torch.autograd.grad(grads_, params_, grad_outputs=v, only_inputs=True, retain_graph=False)
+                THv = [THv_ + H_ * float(tmp_num_data) + 0.0 for THv_, H_ in zip(THv, Hessian_v)]
                 # THv = [THv_ + H_ + 0. for
                 #        THv_, H_ in zip(THv, Hessian_v)]
 
@@ -127,12 +114,10 @@ class HessianDispatcher:
         eigenvalues = [torch.sum(x * y).cpu().item() for (x, y) in zip(THv, v)]
         return eigenvalues, THv
 
-
     def normalize(self, v: List[torch.Tensor]) -> List[torch.Tensor]:
         s = [torch.sum(x * x).sqrt() for x in v]
         v = [v_ / (s_ + 1e-6) for (v_, s_) in zip(v, s)]
         return v
-
 
     def converge(self, pre_eigenvalues: List[float], eigenvalues: List[float]) -> bool:
         for i in range(len(eigenvalues)):
@@ -143,7 +128,6 @@ class HessianDispatcher:
         return True
 
     def broadcast(self, graph: BaseGraph, computing_op_platforms: Dict[str, TargetPlatform]) -> None:
-
         def available(op: Operation) -> bool:
             return is_activation(op) or is_passive(op)
 
@@ -164,8 +148,7 @@ class HessianDispatcher:
                 if not available(cur_operation):
                     return
 
-                if is_activation(cur_operation) and not pre_operation.is_computing_op\
-                    and not is_passive(cur_operation):
+                if is_activation(cur_operation) and not pre_operation.is_computing_op and not is_passive(cur_operation):
                     computing_op_platforms[cur_operation.name] = TargetPlatform.PPL_CUDA_INT8
                 else:
                     computing_op_platforms[cur_operation.name] = computing_op_platforms[pre_operation.name]
@@ -175,20 +158,28 @@ class HessianDispatcher:
         def trace_binary(pre_operation: Operation, cur_operation: Operation) -> None:
             if pre_operation is None:
                 for var in cur_operation.inputs:
-                    if var.source_op is not None and\
-                        computing_op_platforms[var.source_op.name] == TargetPlatform.PPL_CUDA_INT8:
+                    if (
+                        var.source_op is not None
+                        and computing_op_platforms[var.source_op.name] == TargetPlatform.PPL_CUDA_INT8
+                    ):
                         computing_op_platforms[cur_operation.name] = TargetPlatform.PPL_CUDA_INT8
                         break
-                if  cur_operation.name not in computing_op_platforms:
+                if cur_operation.name not in computing_op_platforms:
                     computing_op_platforms[cur_operation.name] = TargetPlatform.PPL_CUDA_INT4
             else:
                 if not available(cur_operation):
-                    if cur_operation.type in ['Add', 'Concat', 'Sub', 'Mul'] and\
-                        is_root(cur_operation) and cur_operation not in queue:
+                    if (
+                        cur_operation.type in ["Add", "Concat", "Sub", "Mul"]
+                        and is_root(cur_operation)
+                        and cur_operation not in queue
+                    ):
                         queue.append(cur_operation)
                     return
-                if is_activation(cur_operation) and not pre_operation.type in ['Add', 'Concat', 'Sub', 'Mul']\
-                        and not is_passive(cur_operation):
+                if (
+                    is_activation(cur_operation)
+                    and not pre_operation.type in ["Add", "Concat", "Sub", "Mul"]
+                    and not is_passive(cur_operation)
+                ):
                     computing_op_platforms[cur_operation.name] = TargetPlatform.PPL_CUDA_INT8
                 else:
                     computing_op_platforms[cur_operation.name] = computing_op_platforms[pre_operation.name]
@@ -201,21 +192,21 @@ class HessianDispatcher:
 
         queue = deque()
         for op in graph.operations.values():
-            if op.type in ['Add', 'Concat', 'Sub', 'Mul'] and is_root(op):
+            if op.type in ["Add", "Concat", "Sub", "Mul"] and is_root(op):
                 queue.append(op)
 
         while len(queue):
             op = queue.popleft()
             trace_binary(None, op)
 
-
-    def dispatch(self,
-                graph: BaseGraph,
-                executor: BaseGraphExecutor,
-                dataloader: Iterable,
-                calib_steps: int,
-                collate_fn: Callable,
-                **kwargs
+    def dispatch(
+        self,
+        graph: BaseGraph,
+        executor: BaseGraphExecutor,
+        dataloader: Iterable,
+        calib_steps: int,
+        collate_fn: Callable,
+        **kwargs,
     ) -> Dict[str, TargetPlatform]:
         self.enable_gradient(graph)
         all_computing_ops, last_computing_ops = self.find_all_computing_ops(graph)
@@ -226,28 +217,23 @@ class HessianDispatcher:
 
         v = [torch.randn(p.size()).to(self.device) for p in params]
         v = self.normalize(v)
-        logger.info('Now computing eigenvalues by power iteration')
+        logger.info("Now computing eigenvalues by power iteration")
         for i in tqdm(range(self.max_iter), total=self.max_iter):
             self.zero_grad(graph)
 
-            tmp_eigenvalues, Hv = self.hv_product(v,
-                                                params,
-                                                output_names,
-                                                all_computing_ops,
-                                                executor,
-                                                dataloader,
-                                                calib_steps,
-                                                collate_fn)
+            tmp_eigenvalues, Hv = self.hv_product(
+                v, params, output_names, all_computing_ops, executor, dataloader, calib_steps, collate_fn
+            )
             v = self.normalize(Hv)
             if not self.converge(eigenvalues, tmp_eigenvalues):
                 eigenvalues = tmp_eigenvalues
             else:
-                logger.info('Converged already, stopping the iteration')
+                logger.info("Converged already, stopping the iteration")
                 eigenvalues = tmp_eigenvalues
                 break
 
         all_op_names = [op.name for op in all_computing_ops]
-        all_op_eigenvalues = [(x, y) for x,y in zip(all_op_names, eigenvalues)]
+        all_op_eigenvalues = [(x, y) for x, y in zip(all_op_names, eigenvalues)]
         if self.memory_aware:
             all_param_nums = [float(p.numel()) for p in params]
             for i in range(len(all_op_eigenvalues)):
@@ -277,7 +263,7 @@ class PPLNNMixPrecisionDispatcher:
         fp32_platform: TargetPlatform,
         SOI_platform: TargetPlatform,
         INT4_COMPUTING_OPS: List[str],
-        **kwargs
+        **kwargs,
     ) -> Dict[str, TargetPlatform]:
         """dispatch certain ops to INT4 platforms, note that INT4_COMPUTING_OPS
         should be determined by users in advance.
@@ -322,8 +308,7 @@ class PPLNNMixPrecisionDispatcher:
                 if not available(cur_operation):
                     return
 
-                if is_activation(cur_operation) and not pre_operation.is_computing_op\
-                    and not is_passive(cur_operation):
+                if is_activation(cur_operation) and not pre_operation.is_computing_op and not is_passive(cur_operation):
                     computing_op_platforms[cur_operation.name] = TargetPlatform.PPL_CUDA_INT8
                 else:
                     computing_op_platforms[cur_operation.name] = computing_op_platforms[pre_operation.name]
@@ -334,21 +319,29 @@ class PPLNNMixPrecisionDispatcher:
         def trace_binary(pre_operation: Operation, cur_operation: Operation) -> None:
             if pre_operation is None:
                 for var in cur_operation.inputs:
-                    if var.source_op is not None and\
-                        computing_op_platforms[var.source_op.name] == TargetPlatform.PPL_CUDA_INT8:
+                    if (
+                        var.source_op is not None
+                        and computing_op_platforms[var.source_op.name] == TargetPlatform.PPL_CUDA_INT8
+                    ):
                         computing_op_platforms[cur_operation.name] = TargetPlatform.PPL_CUDA_INT8
                         break
-                if  cur_operation.name not in computing_op_platforms:
+                if cur_operation.name not in computing_op_platforms:
                     computing_op_platforms[cur_operation.name] = TargetPlatform.PPL_CUDA_INT4
             else:
                 if not available(cur_operation):
-                    if cur_operation.type in ['Add', 'Concat', 'Sub', 'Mul'] and\
-                        is_root(cur_operation) and pplnn_permit(cur_operation) and\
-                        cur_operation not in queue:
+                    if (
+                        cur_operation.type in ["Add", "Concat", "Sub", "Mul"]
+                        and is_root(cur_operation)
+                        and pplnn_permit(cur_operation)
+                        and cur_operation not in queue
+                    ):
                         queue.append(cur_operation)
                     return
-                if is_activation(cur_operation) and not pre_operation.type in ['Add', 'Concat', 'Sub', 'Mul']\
-                        and not is_passive(cur_operation):
+                if (
+                    is_activation(cur_operation)
+                    and not pre_operation.type in ["Add", "Concat", "Sub", "Mul"]
+                    and not is_passive(cur_operation)
+                ):
                     computing_op_platforms[cur_operation.name] = TargetPlatform.PPL_CUDA_INT8
                 else:
                     computing_op_platforms[cur_operation.name] = computing_op_platforms[pre_operation.name]
@@ -357,22 +350,20 @@ class PPLNNMixPrecisionDispatcher:
 
         computing_op_platforms = {}
         pplnn_dispatching_table = PPLNNDispatcher.dispatch(
-            graph = graph,
-            quant_platform = quant_platform,
-            fp32_platform = fp32_platform,
-            SOI_platform = SOI_platform
+            graph=graph, quant_platform=quant_platform, fp32_platform=fp32_platform, SOI_platform=SOI_platform
         )
         for name in pplnn_dispatching_table:
-            if graph.operations[name].is_computing_op and \
-                pplnn_dispatching_table[name] == quant_platform:
+            if graph.operations[name].is_computing_op and pplnn_dispatching_table[name] == quant_platform:
                 computing_op_platforms[name] = TargetPlatform.PPL_CUDA_INT8
 
         for name in INT4_COMPUTING_OPS:
             if pplnn_dispatching_table[name] == quant_platform:
                 computing_op_platforms[name] = TargetPlatform.PPL_CUDA_INT4
             else:
-                logger.warning(f"""Op {name} is not dispatched to quantable platforms by
-                pplnn dispatcher, ignore this op here""")
+                logger.warning(
+                    f"""Op {name} is not dispatched to quantable platforms by
+                pplnn dispatcher, ignore this op here"""
+                )
 
         for op in graph.operations.values():
             if op.name in computing_op_platforms:
@@ -380,7 +371,7 @@ class PPLNNMixPrecisionDispatcher:
 
         queue = deque()
         for op in graph.operations.values():
-            if op.type in ['Add', 'Concat', 'Sub', 'Mul'] and is_root(op) and pplnn_permit(op):
+            if op.type in ["Add", "Concat", "Sub", "Mul"] and is_root(op) and pplnn_permit(op):
                 queue.append(op)
 
         while len(queue):

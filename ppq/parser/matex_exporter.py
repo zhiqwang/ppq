@@ -4,16 +4,23 @@ from typing import Dict, List, Tuple
 import onnx
 import torch
 from onnx import helper
-from ppq.core import (COMPELING_OP_TYPES, PPQ_CONFIG,
-                      ChannelwiseTensorQuantizationConfig, DataType,
-                      OperationMeta, QuantizationProperty, QuantizationStates,
-                      TensorMeta, TensorQuantizationConfig,
-                      convert_any_to_torch_tensor, ppq_legacy)
-from ppq.IR import (BaseGraph, Operation, QuantableOperation,
-                    QuantableVariable, Variable)
+from ppq.core import (
+    ChannelwiseTensorQuantizationConfig,
+    COMPELING_OP_TYPES,
+    convert_any_to_torch_tensor,
+    DataType,
+    OperationMeta,
+    PPQ_CONFIG,
+    ppq_legacy,
+    QuantizationProperty,
+    QuantizationStates,
+    TensorMeta,
+    TensorQuantizationConfig,
+)
+from ppq.core.common import GRAPH_OPSET_ATTRIB
+from ppq.IR import BaseGraph, Operation, QuantableOperation, QuantableVariable, Variable
 from ppq.IR.base.command import GraphCommand, GraphCommandType
 from ppq.IR.morph import GraphDeviceSwitcher, GraphFormatter
-from ppq.core.common import GRAPH_OPSET_ATTRIB
 from ppq.utils.round import ppq_tensor_round
 
 from .onnx_exporter import OnnxExporter
@@ -54,9 +61,9 @@ class MetaxExporter(OnnxExporter):
     ```
     """
 
-    def __init__(self, removed_activation_types: List[str] = ['Relu', 'Clip']) -> None:
+    def __init__(self, removed_activation_types: List[str] = ["Relu", "Clip"]) -> None:
         super().__init__()
-        ppq_legacy('Metax Exporter', version='0.6.4', adapt_to='ONNXRUNTIME Exporter')
+        ppq_legacy("Metax Exporter", version="0.6.4", adapt_to="ONNXRUNTIME Exporter")
         self.removed_activation_types = removed_activation_types
 
     def inplace_quantization(self, var: QuantableVariable, is_bias: bool) -> Tuple[torch.Tensor, torch.Tensor, int]:
@@ -81,13 +88,20 @@ class MetaxExporter(OnnxExporter):
             var.value = tensor.type(torch.uint8)
         else:
             var.value = tensor.type(torch.int8)
-        return (convert_any_to_torch_tensor(config.scale, dtype=torch.float32),
-            convert_any_to_torch_tensor(config.offset, dtype=var.value.dtype), axis)
+        return (
+            convert_any_to_torch_tensor(config.scale, dtype=torch.float32),
+            convert_any_to_torch_tensor(config.offset, dtype=var.value.dtype),
+            axis,
+        )
 
     def insert_quant_dequant_on_var(
-        self, graph: BaseGraph, var: QuantableVariable,
-        config: TensorQuantizationConfig=None, single_branch: bool=False,
-        dest_op: Operation=None) -> None:
+        self,
+        graph: BaseGraph,
+        var: QuantableVariable,
+        config: TensorQuantizationConfig = None,
+        single_branch: bool = False,
+        dest_op: Operation = None,
+    ) -> None:
         """insert quant and dequant op on common quantable variables, by default a pair of quant
         and dequant ops will be inserted on var, i.e., all destinations of original var will be
         replaced by output of dequant op, but you can also insert on single var--dest_op branch
@@ -106,16 +120,17 @@ class MetaxExporter(OnnxExporter):
             config = configs[0]
 
         offset_dtype = torch.int8
-        if config.policy.has_property(QuantizationProperty.ASYMMETRICAL): offset_dtype = torch.uint8
-        scale  = convert_any_to_torch_tensor(config.scale, dtype=torch.float32)
+        if config.policy.has_property(QuantizationProperty.ASYMMETRICAL):
+            offset_dtype = torch.uint8
+        scale = convert_any_to_torch_tensor(config.scale, dtype=torch.float32)
         offset = convert_any_to_torch_tensor(config.offset, dtype=offset_dtype)
 
         qt_svar = graph.create_variable(name=None, value=scale.clone(), is_parameter=True)
         qt_zvar = graph.create_variable(name=None, value=offset.clone(), is_parameter=True)
         dq_svar = graph.create_variable(name=None, value=scale.clone(), is_parameter=True)
         dq_zvar = graph.create_variable(name=None, value=offset.clone(), is_parameter=True)
-        qt_op   = graph.create_operation(op_type='QuantizeLinear', attributes={})
-        dq_op   = graph.create_operation(op_type='DequantizeLinear', attributes={})
+        qt_op = graph.create_operation(op_type="QuantizeLinear", attributes={})
+        dq_op = graph.create_operation(op_type="DequantizeLinear", attributes={})
 
         if single_branch:
             upstream_op, downstream_op = var.source_op, dest_op
@@ -136,7 +151,7 @@ class MetaxExporter(OnnxExporter):
         # apply inplace quantization for parameters and only insert dequant op
         # on pre-quant var
         scale, offset, axis = self.inplace_quantization(var, is_bias)
-        dequant_op = graph.create_operation(op_type='DequantizeLinear', attributes={'axis':axis})
+        dequant_op = graph.create_operation(op_type="DequantizeLinear", attributes={"axis": axis})
         graph.insert_op_on_var(dequant_op, var.name)
 
         dq_svar = graph.create_variable(name=None, value=scale.clone(), is_parameter=True)
@@ -150,20 +165,26 @@ class MetaxExporter(OnnxExporter):
             if var.is_parameter:
                 for op in var.dest_ops:
                     if op.meta_data is None:
-                        op.meta_data = OperationMeta([TensorMeta(DataType.FP32, None, v.name) for v in
-                            op.inputs], [TensorMeta(DataType.FP32, None, v.name) for v in
-                            op.outputs], op.name, op.type, -1)
+                        op.meta_data = OperationMeta(
+                            [TensorMeta(DataType.FP32, None, v.name) for v in op.inputs],
+                            [TensorMeta(DataType.FP32, None, v.name) for v in op.outputs],
+                            op.name,
+                            op.type,
+                            -1,
+                        )
 
                     if torch.is_tensor(var.value):
-                        op.meta_data.input_metas[op.inputs.index(var)] = (
-                            TensorMeta.parsing_from_torch_tensor(var.value, var.name))
+                        op.meta_data.input_metas[op.inputs.index(var)] = TensorMeta.parsing_from_torch_tensor(
+                            var.value, var.name
+                        )
                     else:
-                        op.meta_data.input_metas[op.inputs.index(var)] = (
-                            TensorMeta.parsing_from_numpy_ndarray(var.value, var.name))
+                        op.meta_data.input_metas[op.inputs.index(var)] = TensorMeta.parsing_from_numpy_ndarray(
+                            var.value, var.name
+                        )
 
         # add variable meta info in topo order
         for op in graph.topological_sort():
-            if op.type == 'QuantizeLinear' and op.inputs[0].source_op is not None:
+            if op.type == "QuantizeLinear" and op.inputs[0].source_op is not None:
                 input_var = op.inputs[0]
                 op.meta_data.input_metas[0] = input_var.meta
                 op.meta_data.output_metas[0].shape = input_var.meta.shape
@@ -173,7 +194,7 @@ class MetaxExporter(OnnxExporter):
                 dequant_op.meta_data.output_metas[0].shape = input_var.meta.shape
                 dequant_op.meta_data.output_metas[0].dtype = dequant_op.meta_data.input_metas[1].dtype
             # must be input
-            elif op.type == 'QuantizeLinear' and op.inputs[0].value is None:
+            elif op.type == "QuantizeLinear" and op.inputs[0].value is None:
                 var = op.outputs[0]
                 dest_op = var.dest_ops[0]
                 dest_idx = var.dest_idx[0]
@@ -194,7 +215,7 @@ class MetaxExporter(OnnxExporter):
                 op.meta_data.input_metas[0] = meta
                 op.meta_data.output_metas[0].shape = meta.shape
                 op.meta_data.output_metas[0].dtype = op.meta_data.input_metas[2].dtype
-            elif op.type == 'DequantizeLinear' and op.inputs[0].source_op is None:
+            elif op.type == "DequantizeLinear" and op.inputs[0].source_op is None:
                 op.meta_data.output_metas[0].shape = op.meta_data.input_metas[0].shape
                 op.meta_data.output_metas[0].dtype = op.meta_data.input_metas[1].dtype
 
@@ -202,13 +223,17 @@ class MetaxExporter(OnnxExporter):
         # Activation op can only be relu and clip,
         # so it is safe to access op.inputs[0], op.outputs[0] as their input and output.
         for op in activation_ops:
-            if not isinstance(op, QuantableOperation): continue
-            if len(graph.get_upstream_operations(op)) == 0: Continue
+            if not isinstance(op, QuantableOperation):
+                continue
+            if len(graph.get_upstream_operations(op)) == 0:
+                Continue
 
             upstream_op = graph.get_upstream_operations(op)[0]
-            if not isinstance(upstream_op, QuantableOperation): continue
+            if not isinstance(upstream_op, QuantableOperation):
+                continue
             input_var, input_cfg = op.inputs[0], op.config.input_quantization_config[0]
-            if not input_cfg.policy.has_property(QuantizationProperty.ASYMMETRICAL): continue
+            if not input_cfg.policy.has_property(QuantizationProperty.ASYMMETRICAL):
+                continue
 
             # PATCH 20220304 Removing graph output op might cause error.
             if op.outputs[0].name in graph.outputs:
@@ -223,22 +248,20 @@ class MetaxExporter(OnnxExporter):
         formatter(GraphCommand(GraphCommandType.DELETE_ISOLATED))
 
     def required_opsets(self) -> Dict[str, int]:
-        extra_domain_versions = [
-            ('ai.onnx', 13)
-            ]
+        extra_domain_versions = [("ai.onnx", 13)]
         return dict(extra_domain_versions)
 
-    def transform_op(self, graph:BaseGraph) -> None:
+    def transform_op(self, graph: BaseGraph) -> None:
         # this func transform representation of certain op from opset 11 to 13
         for op in graph.operations.values():
-            if op.type == 'ReduceSum' or op.type == 'Squeeze' or op.type == 'Unsqueeze':
-                axes = convert_any_to_torch_tensor(op.attributes.pop('axes'), dtype=torch.int64)
+            if op.type == "ReduceSum" or op.type == "Squeeze" or op.type == "Unsqueeze":
+                axes = convert_any_to_torch_tensor(op.attributes.pop("axes"), dtype=torch.int64)
                 var = graph.create_variable(name=None, value=axes, is_parameter=True)
                 graph.create_link_with_op(variable=var, upstream_op=None, downstream_op=op)
                 op.meta_data.input_metas.append(TensorMeta.parsing_from_torch_tensor(var.value, var.name))
 
-            elif op.type == 'Split':
-                split = convert_any_to_torch_tensor(op.attributes.pop('split'), dtype=torch.int64)
+            elif op.type == "Split":
+                split = convert_any_to_torch_tensor(op.attributes.pop("split"), dtype=torch.int64)
                 var = graph.create_variable(name=None, value=split, is_parameter=True)
                 graph.create_link_with_op(variable=var, upstream_op=None, downstream_op=op)
                 op.meta_data.input_metas.append(TensorMeta.parsing_from_torch_tensor(var.value, var.name))
@@ -255,8 +278,10 @@ class MetaxExporter(OnnxExporter):
             assert isinstance(op, QuantableOperation)
             for var in op.inputs:
                 assert isinstance(var, QuantableVariable)
-                if var.source_op_config is not None and \
-                    var.source_op_config.dominated_by != op.config.input_quantization_config[0].dominated_by:
+                if (
+                    var.source_op_config is not None
+                    and var.source_op_config.dominated_by != op.config.input_quantization_config[0].dominated_by
+                ):
                     compel_pairs.append((var, op, op.config.input_quantization_config[0]))
         return compel_pairs
 
@@ -276,14 +301,16 @@ class MetaxExporter(OnnxExporter):
         # collect quantable vars, where we need to insert quant and dequant op
         # note that we assume all quantization configs of the same variable maintained
         # by different ops are actually the same
-        quantable_vars,removed_activations = [], []
+        quantable_vars, removed_activations = [], []
         for var in graph.variables.values():
             if isinstance(var, QuantableVariable):
                 configs = [var.source_op_config] + var.dest_op_configs
                 for cfg in configs:
                     if cfg is not None and not QuantizationStates.can_export(cfg.state):
-                        raise AttributeError(f'quantization state of variable {var.name} is unexpected, \
-                        please check if you have finished the whole quantization process')
+                        raise AttributeError(
+                            f"quantization state of variable {var.name} is unexpected, \
+                        please check if you have finished the whole quantization process"
+                        )
                     elif cfg is not None and cfg.state not in {QuantizationStates.FP32, QuantizationStates.SOI}:
                         quantable_vars.append((cfg, var))
                         break
@@ -298,8 +325,11 @@ class MetaxExporter(OnnxExporter):
                 else:
                     self.insert_dequant_param(graph, var, False)
 
-            elif len(var.dest_ops) == 1 and var.dest_ops[0].type in self.removed_activation_types and \
-                cfg.policy.has_property(QuantizationProperty.ASYMMETRICAL):
+            elif (
+                len(var.dest_ops) == 1
+                and var.dest_ops[0].type in self.removed_activation_types
+                and cfg.policy.has_property(QuantizationProperty.ASYMMETRICAL)
+            ):
                 removed_activations.extend(var.dest_ops)
             else:
                 self.insert_quant_dequant_on_var(graph, var)
@@ -311,7 +341,7 @@ class MetaxExporter(OnnxExporter):
             assert isinstance(var, Variable)
             # skip newly added ops
             while op not in var.dest_ops:
-                assert var.dest_ops[0].type in {'QuantizeLinear', 'DequantizeLinear'}
+                assert var.dest_ops[0].type in {"QuantizeLinear", "DequantizeLinear"}
                 var = var.dest_ops[0].outputs[0]
             self.insert_quant_dequant_on_var(graph, var, cfg, True, op)
 
@@ -320,7 +350,8 @@ class MetaxExporter(OnnxExporter):
         self.transform_op(graph)
 
         name = graph._name
-        if not name: name = 'PPL Quantization Tool - Onnx Export'
+        if not name:
+            name = "PPL Quantization Tool - Onnx Export"
 
         # Ready to export onnx graph definition.
         _inputs, _outputs, _initilizers, _nodes = [], [], [], []
@@ -349,11 +380,11 @@ class MetaxExporter(OnnxExporter):
         opsets = []
         if GRAPH_OPSET_ATTRIB in graph._detail:
             for opset in graph._detail[GRAPH_OPSET_ATTRIB]:
-                if opset['domain'] in extra_opsets or opset['domain'] == '':
+                if opset["domain"] in extra_opsets or opset["domain"] == "":
                     continue
                 op = onnx.OperatorSetIdProto()
-                op.domain = opset['domain']
-                op.version = opset['version']
+                op.domain = opset["domain"]
+                op.version = opset["version"]
                 opsets.append(op)
 
         for key, value in extra_opsets.items():
@@ -362,8 +393,7 @@ class MetaxExporter(OnnxExporter):
             op.version = value
             opsets.append(op)
 
-        onnx_model = helper.make_model(
-            graph_def, producer_name=PPQ_CONFIG.NAME, opset_imports=opsets)
+        onnx_model = helper.make_model(graph_def, producer_name=PPQ_CONFIG.NAME, opset_imports=opsets)
         onnx_model.ir_version = 7
         # onnx.checker.check_model(onnx_model)
         onnx.save(onnx_model, file_path)

@@ -1,9 +1,14 @@
 from typing import Any
 
 import torch
-from ppq.core import (PPQ_CONFIG, ChannelwiseTensorQuantizationConfig,
-                      QuantizationProperty, QuantizationStates, RoundingPolicy,
-                      TensorQuantizationConfig)
+from ppq.core import (
+    ChannelwiseTensorQuantizationConfig,
+    PPQ_CONFIG,
+    QuantizationProperty,
+    QuantizationStates,
+    RoundingPolicy,
+    TensorQuantizationConfig,
+)
 from ppq.quantization.qfunction import BaseQuantFunction
 from ppq.utils.round import ppq_tensor_round
 from torch.autograd import Function
@@ -18,10 +23,10 @@ class LinearQuantFunction(BaseQuantFunction):
 
 
 class TensorwiseLinearQuantImpl(Function):
-    """Torch Tensorwise quantize is designed to quantize a torch Tensor
-    with a given configuration. All quantization within PPQ will invoke
-    this function to quantize its value. Any modification of this function
-    will greatly affects system behaviour.
+    """Torch Tensorwise quantize is designed to quantize a torch Tensor with a
+    given configuration. All quantization within PPQ will invoke this function
+    to quantize its value. Any modification of this function will greatly
+    affects system behaviour.
 
     This is a torch implementation of quantization itself.
     Notice that if ppq.config.USING_CUDA_KERNAL = True,
@@ -30,10 +35,17 @@ class TensorwiseLinearQuantImpl(Function):
     Notice this function will always clone your tensor value first.
     This function never quantize your tensor value inplace.
     """
-    @ staticmethod
-    def forward(ctx, tensor: torch.Tensor, scales: torch.Tensor,
-                offsets: torch.Tensor, quant_min: int, quant_max: int,
-                rounding: RoundingPolicy) -> torch.Tensor:
+
+    @staticmethod
+    def forward(
+        ctx,
+        tensor: torch.Tensor,
+        scales: torch.Tensor,
+        offsets: torch.Tensor,
+        quant_min: int,
+        quant_max: int,
+        rounding: RoundingPolicy,
+    ) -> torch.Tensor:
 
         if not PPQ_CONFIG.USING_CUDA_KERNEL or not tensor.is_cuda:
             scales = scales.to(tensor.device)
@@ -43,7 +55,7 @@ class TensorwiseLinearQuantImpl(Function):
             tensor = torch.clamp(tensor, quant_min, quant_max)
             tensor = (tensor - offsets) * scales
             return tensor
-        
+
         else:
             from ppq.core import CUDA
 
@@ -54,20 +66,20 @@ class TensorwiseLinearQuantImpl(Function):
                 offsets=offsets,
                 minimum=quant_min,
                 maximum=quant_max,
-                rounding=rounding.value
+                rounding=rounding.value,
             )
             return quantized
 
-    @ staticmethod
+    @staticmethod
     def backward(ctx, dy: torch.Tensor):
         return dy, None, None, None, None, None, None, None, None
 
 
 class ChannelwiseLinearQuantImpl(Function):
-    """Torch Channelwise quantize is designed to quantize a torch Tensor
-    with a given configuration. All quantization within PPQ will invoke
-    this function to quantize its value. Any modification of this function
-    will greatly affects system behaviour.
+    """Torch Channelwise quantize is designed to quantize a torch Tensor with a
+    given configuration. All quantization within PPQ will invoke this function
+    to quantize its value. Any modification of this function will greatly
+    affects system behaviour.
 
     This is a torch implementation of quantization itself.
     Notice that if ppq.config.USING_CUDA_KERNAL = True,
@@ -76,11 +88,18 @@ class ChannelwiseLinearQuantImpl(Function):
     Notice this function will always clone your tensor value first.
     This function never quantize your tensor value inplace.
     """
-    @ staticmethod
-    def forward(ctx, tensor: torch.Tensor, scales: torch.Tensor,
-                offsets: torch.Tensor, channel_axis: int,
-                quant_min: int, quant_max: int,
-                rounding: RoundingPolicy) -> torch.Tensor:
+
+    @staticmethod
+    def forward(
+        ctx,
+        tensor: torch.Tensor,
+        scales: torch.Tensor,
+        offsets: torch.Tensor,
+        channel_axis: int,
+        quant_min: int,
+        quant_max: int,
+        rounding: RoundingPolicy,
+    ) -> torch.Tensor:
         if not PPQ_CONFIG.USING_CUDA_KERNEL or not tensor.is_cuda:
             scales = scales.to(tensor.device)
             offsets = offsets.to(tensor.device)
@@ -94,6 +113,7 @@ class ChannelwiseLinearQuantImpl(Function):
             return tensor
         else:
             from ppq.core import CUDA
+
             quantized = CUDA.LinearQuantize_C(
                 tensor=tensor,
                 scales=scales,
@@ -101,18 +121,17 @@ class ChannelwiseLinearQuantImpl(Function):
                 channel_axis=channel_axis,
                 minimum=quant_min,
                 maximum=quant_max,
-                rounding=rounding.value)
+                rounding=rounding.value,
+            )
             return quantized
 
-    @ staticmethod
+    @staticmethod
     def backward(ctx, dy: torch.Tensor):
         return dy, None, None, None, None, None, None, None, None, None
 
 
-def PPQLinearQuantFunction(
-    tensor: torch.Tensor, config: TensorQuantizationConfig) -> torch.Tensor:
-    """
-    PPQ 核心量化函数
+def PPQLinearQuantFunction(tensor: torch.Tensor, config: TensorQuantizationConfig) -> torch.Tensor:
+    """PPQ 核心量化函数.
 
     Args:
         tensor (torch.Tensor): _description_
@@ -124,27 +143,39 @@ def PPQLinearQuantFunction(
     Returns:
         torch.Tensor: _description_
     """
-    if not QuantizationStates.is_activated(config.state): return tensor
+    if not QuantizationStates.is_activated(config.state):
+        return tensor
     if not config.policy.has_property(QuantizationProperty.LINEAR):
-        raise ValueError('Critical Quantization Error! Non-linear config detected.')
+        raise ValueError("Critical Quantization Error! Non-linear config detected.")
     if config.policy.has_property(QuantizationProperty.PER_CHANNEL):
-        assert isinstance(config, ChannelwiseTensorQuantizationConfig), (
-            'Critical Quantization Error! Except a ChannelwiseTensorQuantizationConfig.')
+        assert isinstance(
+            config, ChannelwiseTensorQuantizationConfig
+        ), "Critical Quantization Error! Except a ChannelwiseTensorQuantizationConfig."
         return ChannelwiseLinearQuantImpl.apply(
-            tensor, config.scale, config.offset, config.channel_axis,
-            config.quant_min, config.quant_max, config.rounding)
+            tensor,
+            config.scale,
+            config.offset,
+            config.channel_axis,
+            config.quant_min,
+            config.quant_max,
+            config.rounding,
+        )
     elif config.policy.has_property(QuantizationProperty.PER_TENSOR):
         return TensorwiseLinearQuantImpl.apply(
-            tensor, config.scale, config.offset,
-            config.quant_min, config.quant_max, config.rounding)
+            tensor, config.scale, config.offset, config.quant_min, config.quant_max, config.rounding
+        )
 
 
-def PPQLinearQuant_toInt(tensor: torch.Tensor, config: TensorQuantizationConfig, ) -> torch.Tensor:
+def PPQLinearQuant_toInt(
+    tensor: torch.Tensor,
+    config: TensorQuantizationConfig,
+) -> torch.Tensor:
     if not config.policy.has_property(QuantizationProperty.LINEAR):
-        raise ValueError('Critical Quantization Error! Non-linear config detected.')
+        raise ValueError("Critical Quantization Error! Non-linear config detected.")
     if config.policy.has_property(QuantizationProperty.PER_CHANNEL):
-        assert isinstance(config, ChannelwiseTensorQuantizationConfig), (
-            'Critical Quantization Error! Except a ChannelwiseTensorQuantizationConfig.')
+        assert isinstance(
+            config, ChannelwiseTensorQuantizationConfig
+        ), "Critical Quantization Error! Except a ChannelwiseTensorQuantizationConfig."
         shape = [1 if axis != config.channel_axis else -1 for axis in range(tensor.ndim)]
         scale, offset = config.scale.view(shape), config.offset.view(shape)
         tensor = ppq_tensor_round((tensor / scale), config.rounding) + offset

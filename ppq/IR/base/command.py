@@ -97,25 +97,27 @@ class GraphCommandType(Enum):
     # 从一个指定位置将图截断
     TRUNCATE_ON_VAR = 30
 
-class GraphCommand():
+
+class GraphCommand:
     def __init__(self, command_type: GraphCommandType, **kwargs) -> None:
-        assert isinstance(command_type, GraphCommandType), \
-            f'Command Type must be a GraphCommandType object, but {type(command_type)} received.'
+        assert isinstance(
+            command_type, GraphCommandType
+        ), f"Command Type must be a GraphCommandType object, but {type(command_type)} received."
         self.command_type = command_type
         self.kwargs = kwargs
 
     def __str__(self) -> str:
-        return f'GraphCommand object {self.__hash__()},\t Command type: {self.command_type},\t Args:{self.kwargs}'
+        return f"GraphCommand object {self.__hash__()},\t Command type: {self.command_type},\t Args:{self.kwargs}"
 
 
 class GraphDeployCommand(GraphCommand):
     def __init__(self, device: str) -> None:
-        if device.startswith('cuda'):
+        if device.startswith("cuda"):
             super().__init__(GraphCommandType.DEPLOY_TO_CUDA)
-        elif device.startswith('cpu'):
+        elif device.startswith("cpu"):
             super().__init__(GraphCommandType.DEPLOY_TO_CPU)
         else:
-            raise ValueError(f'Device type {device} not understand.')
+            raise ValueError(f"Device type {device} not understand.")
         self._device = device
 
     def __str__(self) -> str:

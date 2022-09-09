@@ -17,10 +17,17 @@
 from typing import Dict
 
 import torch
-from ppq.core import (PPQ_CONFIG, ChannelwiseTensorQuantizationConfig,
-                      DataType, OperationMeta, QuantizationProperty,
-                      QuantizationStates, TensorMeta, TensorQuantizationConfig,
-                      convert_any_to_torch_tensor)
+from ppq.core import (
+    ChannelwiseTensorQuantizationConfig,
+    convert_any_to_torch_tensor,
+    DataType,
+    OperationMeta,
+    PPQ_CONFIG,
+    QuantizationProperty,
+    QuantizationStates,
+    TensorMeta,
+    TensorQuantizationConfig,
+)
 from ppq.IR import BaseGraph
 from ppq.IR.morph import GraphDeviceSwitcher
 from ppq.IR.quantize import QuantableOperation, QuantableVariable
@@ -30,24 +37,24 @@ from .onnxruntime_exporter import ONNXRUNTIMExporter
 
 
 class TensorRTExporter(ONNXRUNTIMExporter):
-    """
-    TensorRT PPQ 0.6.4 以来新加入的功能
-    
+    """TensorRT PPQ 0.6.4 以来新加入的功能.
+
     你需要注意，只有 TensorRT 8.0 以上的版本支持读取 PPQ 导出的量化模型
     并且 TensorRT 对于量化模型的解析存在一些 Bug，
-    
+
     如果你遇到模型解析不对的问题，欢迎随时联系我们进行解决。
-    
+
         已知的问题包括：
         1. 模型导出时最好不要包含其他 opset，如果模型上面带了别的opset，比如 mmdeploy，trt有可能会解析失败
         2. 模型导出时可能出现 Internal Error 10, Invalid Node xxx()，我们还不知道如何解决该问题
-    
+
     Args:
         ONNXRUNTIMExporter (_type_): _description_
     """
+
     def insert_quant_dequant_on_variable(
-        self, graph: BaseGraph, var: QuantableVariable, op: QuantableOperation,
-        config: TensorQuantizationConfig) -> None:
+        self, graph: BaseGraph, var: QuantableVariable, op: QuantableOperation, config: TensorQuantizationConfig
+    ) -> None:
         """Insert Quant & Dequant Operation to graph This insertion will
         strictly follows tensorRT format requirement.
 
@@ -69,38 +76,56 @@ class TensorRTExporter(ONNXRUNTIMExporter):
         """
         meta = var.meta
 
-        scale  = convert_any_to_torch_tensor(config.scale, dtype=torch.float32)
+        scale = convert_any_to_torch_tensor(config.scale, dtype=torch.float32)
         offset = ppq_tensor_round(config.offset).type(torch.int8)
 
-        qt_op = graph.create_operation(op_type='QuantizeLinear', attributes={})
-        dq_op = graph.create_operation(op_type='DequantizeLinear', attributes={})
+        qt_op = graph.create_operation(op_type="QuantizeLinear", attributes={})
+        dq_op = graph.create_operation(op_type="DequantizeLinear", attributes={})
 
         graph.insert_op_between_var_and_op(dq_op, up_var=var, down_op=op)
         graph.insert_op_between_var_and_op(qt_op, up_var=var, down_op=dq_op)
 
-        graph.create_link_with_op(graph.create_variable(value=scale, is_parameter=True), upstream_op=None, downstream_op=qt_op)
-        graph.create_link_with_op(graph.create_variable(value=offset, is_parameter=True), upstream_op=None, downstream_op=qt_op)
-        graph.create_link_with_op(graph.create_variable(value=scale, is_parameter=True), upstream_op=None, downstream_op=dq_op)
-        graph.create_link_with_op(graph.create_variable(value=offset, is_parameter=True), upstream_op=None, downstream_op=dq_op)
+        graph.create_link_with_op(
+            graph.create_variable(value=scale, is_parameter=True), upstream_op=None, downstream_op=qt_op
+        )
+        graph.create_link_with_op(
+            graph.create_variable(value=offset, is_parameter=True), upstream_op=None, downstream_op=qt_op
+        )
+        graph.create_link_with_op(
+            graph.create_variable(value=scale, is_parameter=True), upstream_op=None, downstream_op=dq_op
+        )
+        graph.create_link_with_op(
+            graph.create_variable(value=offset, is_parameter=True), upstream_op=None, downstream_op=dq_op
+        )
 
         if config.policy.has_property(QuantizationProperty.PER_CHANNEL):
             assert isinstance(config, ChannelwiseTensorQuantizationConfig)
-            qt_op.attributes['axis'] = config.channel_axis
-            dq_op.attributes['axis'] = config.channel_axis
+            qt_op.attributes["axis"] = config.channel_axis
+            dq_op.attributes["axis"] = config.channel_axis
 
         # create meta data for qt_op, dq_op
         qt_meta = OperationMeta(
-            input_metas    = [TensorMeta(dtype=DataType.FP32, shape=meta.shape),
-                              TensorMeta(dtype=DataType.FP32, shape=config.scale.shape),
-                              TensorMeta(dtype=DataType.INT8, shape=config.offset.shape)],
-            output_metas   = [TensorMeta(dtype=DataType.INT8, shape=meta.shape)],
-            operation_name = qt_op.name, operation_type=qt_op.type, executing_order=-1)
+            input_metas=[
+                TensorMeta(dtype=DataType.FP32, shape=meta.shape),
+                TensorMeta(dtype=DataType.FP32, shape=config.scale.shape),
+                TensorMeta(dtype=DataType.INT8, shape=config.offset.shape),
+            ],
+            output_metas=[TensorMeta(dtype=DataType.INT8, shape=meta.shape)],
+            operation_name=qt_op.name,
+            operation_type=qt_op.type,
+            executing_order=-1,
+        )
         dq_meta = OperationMeta(
-            input_metas    = [TensorMeta(dtype=DataType.INT8, shape=meta.shape),
-                              TensorMeta(dtype=DataType.FP32, shape=config.scale.shape),
-                              TensorMeta(dtype=DataType.INT8, shape=config.offset.shape)],
-            output_metas   = [TensorMeta(dtype=DataType.FP32, shape=meta.shape)],
-            operation_name = dq_op.name, operation_type=dq_op.type, executing_order=-1)
+            input_metas=[
+                TensorMeta(dtype=DataType.INT8, shape=meta.shape),
+                TensorMeta(dtype=DataType.FP32, shape=config.scale.shape),
+                TensorMeta(dtype=DataType.INT8, shape=config.offset.shape),
+            ],
+            output_metas=[TensorMeta(dtype=DataType.FP32, shape=meta.shape)],
+            operation_name=dq_op.name,
+            operation_type=dq_op.type,
+            executing_order=-1,
+        )
 
         qt_op.meta_data = qt_meta
         dq_op.meta_data = dq_meta
@@ -142,68 +167,77 @@ class TensorRTExporter(ONNXRUNTIMExporter):
 
         # find all quantable operations:
         for operation in [op for op in graph.operations.values()]:
-            if not isinstance(operation, QuantableOperation): continue
-            if operation.type in {'Conv', 'Gemm', 'ConvTranspose', 'MatMul'}:
+            if not isinstance(operation, QuantableOperation):
+                continue
+            if operation.type in {"Conv", "Gemm", "ConvTranspose", "MatMul"}:
                 # for Conv, Gemm, ConvTranspose, TensorRT wants their weight to be quantized,
                 # however bias remains fp32.
-                assert len(operation.config.input_quantization_config) >= 2, (
-                    f'Oops seems operation {operation.name} has less than 2 input.')
+                assert (
+                    len(operation.config.input_quantization_config) >= 2
+                ), f"Oops seems operation {operation.name} has less than 2 input."
 
-                i_config, w_config = operation.config.input_quantization_config[: 2]
-                i_var, w_var       = operation.inputs[: 2]
+                i_config, w_config = operation.config.input_quantization_config[:2]
+                i_var, w_var = operation.inputs[:2]
 
                 if QuantizationStates.is_activated(i_config.state):
                     self.insert_quant_dequant_on_variable(graph=graph, var=i_var, config=i_config, op=operation)
                 self.insert_quant_dequant_on_variable(graph=graph, var=w_var, config=w_config, op=operation)
 
-            elif operation.type in {'AveragePool', 'GlobalAveragePool'}:
+            elif operation.type in {"AveragePool", "GlobalAveragePool"}:
                 # for Average pool, tensorRT requires their input quant config.
 
-                assert len(operation.config.input_quantization_config) >= 1, (
-                    f'Oops seems operation {operation.name} has less than 1 input.')
+                assert (
+                    len(operation.config.input_quantization_config) >= 1
+                ), f"Oops seems operation {operation.name} has less than 1 input."
                 i_config = operation.config.input_quantization_config[0]
-                i_var    = operation.inputs[0]
+                i_var = operation.inputs[0]
 
                 if QuantizationStates.is_activated(i_config.state):
                     self.insert_quant_dequant_on_variable(graph=graph, var=i_var, config=i_config, op=operation)
 
             else:
                 super().convert_operation(
-                    graph=graph, op=operation, 
-                    process_activation=True, 
-                    process_parameter=True, 
-                    quant_param_to_int=False)
+                    graph=graph, op=operation, process_activation=True, process_parameter=True, quant_param_to_int=False
+                )
 
         return graph
 
-    def export(self, file_path: str, graph: BaseGraph,
-               config_path: str = None, input_shapes: Dict[str, list] = None) -> None:
+    def export(
+        self, file_path: str, graph: BaseGraph, config_path: str = None, input_shapes: Dict[str, list] = None
+    ) -> None:
         # step 1, export onnx file.
         super().export(file_path=file_path, graph=graph, config_path=None)
 
         # step 2, convert onnx file to tensorRT engine.
         try:
             import tensorrt as trt
+
             TRT_LOGGER = trt.Logger(trt.Logger.INFO)
         except Exception as e:
-            raise Exception('TensorRT is not successfully loaded, Exporter can not create tensorRT engine directly, '
-                            f'a model named {file_path} has been created so that you can send it to tensorRT manually.')
+            raise Exception(
+                "TensorRT is not successfully loaded, Exporter can not create tensorRT engine directly, "
+                f"a model named {file_path} has been created so that you can send it to tensorRT manually."
+            )
         network_flags = 1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
         network_flags = network_flags | (1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_PRECISION))
 
         # step 3, build profile input shape
         # Notice that for each input you should give 3 shapes: (min shape), (opt shape), (max shape)
         if input_shapes is None:
-            input_shapes = {input_var.name: [input_var.meta.shape, input_var.meta.shape, input_var.meta.shape]
-                            for input_var in graph.inputs.values()}
+            input_shapes = {
+                input_var.name: [input_var.meta.shape, input_var.meta.shape, input_var.meta.shape]
+                for input_var in graph.inputs.values()
+            }
 
-        with trt.Builder(TRT_LOGGER) as builder, builder.create_network(flags=network_flags) as network, trt.OnnxParser(network, TRT_LOGGER) as parser:
+        with trt.Builder(TRT_LOGGER) as builder, builder.create_network(flags=network_flags) as network, trt.OnnxParser(
+            network, TRT_LOGGER
+        ) as parser:
 
-            with open(file_path, 'rb') as model:
+            with open(file_path, "rb") as model:
                 if not parser.parse(model.read()):
-                    print ('ERROR: Failed to parse the ONNX file.')
+                    print("ERROR: Failed to parse the ONNX file.")
                     for error in range(parser.num_errors):
-                        print (parser.get_error(error))
+                        print(parser.get_error(error))
                     return None
 
             config = builder.create_builder_config()
@@ -219,18 +253,23 @@ class TensorRTExporter(ONNXRUNTIMExporter):
                 if inp.is_shape_tensor:
                     if inp.name in input_shapes:
                         shapes = input_shapes[inp.name]
-                    else: shapes = None
+                    else:
+                        shapes = None
 
                     if not shapes:
-                        shapes = [(1, ) * inp.shape[0]] * 3
-                        print('Setting shape input to {:}. '
-                              'If this is incorrect, for shape input: {:}, '
-                              'please provide tuples for min, opt, '
-                              'and max shapes'.format(shapes[0], inp.name))
+                        shapes = [(1,) * inp.shape[0]] * 3
+                        print(
+                            "Setting shape input to {:}. "
+                            "If this is incorrect, for shape input: {:}, "
+                            "please provide tuples for min, opt, "
+                            "and max shapes".format(shapes[0], inp.name)
+                        )
 
                     if not isinstance(shapes, list) or len(shapes) != 3:
-                        raise ValueError(f'Profiling shape must be a list with exactly 3 shapes(tuples of int), '
-                                         f'while received a {type(shapes)} for input {inp.name}, check your input again.')
+                        raise ValueError(
+                            f"Profiling shape must be a list with exactly 3 shapes(tuples of int), "
+                            f"while received a {type(shapes)} for input {inp.name}, check your input again."
+                        )
 
                     min, opt, max = shapes
                     profile.set_shape_input(inp.name, min, opt, max)
@@ -238,7 +277,8 @@ class TensorRTExporter(ONNXRUNTIMExporter):
                 elif -1 in inp.shape:
                     if inp.name in input_shapes:
                         shapes = input_shapes[inp.name]
-                    else: shapes = None
+                    else:
+                        shapes = None
 
                     if not shapes:
                         shapes = [(1 if s <= 0 else s for s in inp.shape)] * 3
@@ -253,6 +293,6 @@ class TensorRTExporter(ONNXRUNTIMExporter):
 
         # end with
 
-        engine_file = file_path.replace('.onnx', '.engine')
-        with open(engine_file, 'wb') as file:
+        engine_file = file_path.replace(".onnx", ".engine")
+        with open(engine_file, "wb") as file:
             file.write(trt_engine.serialize())

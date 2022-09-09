@@ -16,22 +16,21 @@ from tqdm import tqdm
 # trt > ppq > fp32
 
 # Nvidia Nsight Performance Profile
-ENGINE_PATH = 'Output/yolov6s(b32_int8).engine'
-BATCH_SIZE  = 32
+ENGINE_PATH = "Output/yolov6s(b32_int8).engine"
+BATCH_SIZE = 32
 INPUT_SHAPE = [BATCH_SIZE, 3, 640, 640]
 BENCHMARK_SAMPLES = 512
 
-print(f'Benchmark with {ENGINE_PATH}')
+print(f"Benchmark with {ENGINE_PATH}")
 logger = trt.Logger(trt.Logger.ERROR)
-with open(ENGINE_PATH, 'rb') as f, trt.Runtime(logger) as runtime:
+with open(ENGINE_PATH, "rb") as f, trt.Runtime(logger) as runtime:
     engine = runtime.deserialize_cuda_engine(f.read())
 
 with engine.create_execution_context() as context:
     inputs, outputs, bindings, stream = trt_infer.allocate_buffers(context.engine)
     inputs[0].host = np.zeros(shape=INPUT_SHAPE, dtype=np.float32)
 
-    for _ in tqdm(range(BENCHMARK_SAMPLES), desc=f'Benchmark ...'):
+    for _ in tqdm(range(BENCHMARK_SAMPLES), desc=f"Benchmark ..."):
         trt_infer.do_inference(
-            context, bindings=bindings, inputs=inputs, 
-            outputs=outputs, stream=stream, batch_size=BATCH_SIZE)
-
+            context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream, batch_size=BATCH_SIZE
+        )

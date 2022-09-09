@@ -7,10 +7,9 @@ import numpy as np
 import torch
 from numpy import ceil
 from ppq.core import *
-from ppq.core import QuantizationStates, TensorMeta, ppq_warning
+from ppq.core import ppq_warning, QuantizationStates, TensorMeta
 from ppq.executor import BaseGraphExecutor, TorchExecutor
-from ppq.IR import (BaseGraph, BaseGraph, Operation, Path,
-                    QuantableOperation, SearchableGraph)
+from ppq.IR import BaseGraph, BaseGraph, Operation, Path, QuantableOperation, SearchableGraph
 from ppq.IR.quantize import QuantableVariable
 from ppq.IR.search import TraversalCommand
 from ppq.quantization.algorithm.training import *
@@ -24,7 +23,8 @@ from .training import TrainingBasedPass
 
 class TimeDecay:
     """A helper class computing time decay."""
-    def __init__(self, t_max: int, decay: float=0.2, beta_start: float=20, beta_end:float=2):
+
+    def __init__(self, t_max: int, decay: float = 0.2, beta_start: float = 20, beta_end: float = 2):
         self.t_max = t_max
         self.start_decay = decay * t_max
         self.start_b = beta_start
@@ -37,15 +37,22 @@ class TimeDecay:
 
 class AdaroundRegTerm(torch.nn.Module):
     """Adaround Reg Term is a part of Adaround optimization algorithm.
+
     This term represents the difference between a fp32 value and its quantized counter-part.
         We use a same implementation as proposed in Adaround paper.
     Args:
         torch ([type]): [description]
     """
-    def __init__(self, max_iter: int = 20000,
-                 zeta: float = 1.1, gamma:float = -0.1,
-                 alpha: float = 0.01, beta: float = 20,
-                 warm_ratio: float = 0.2):
+
+    def __init__(
+        self,
+        max_iter: int = 20000,
+        zeta: float = 1.1,
+        gamma: float = -0.1,
+        alpha: float = 0.01,
+        beta: float = 20,
+        warm_ratio: float = 0.2,
+    ):
         self.max_iter = max_iter
         self.zeta = zeta
         self.gamma = gamma
@@ -69,28 +76,35 @@ class AdaroundRegTerm(torch.nn.Module):
 
 class AdaRoundDelegator(TorchQuantizeDelegator):
     def __init__(
-        self, var: QuantableVariable,
-        config: TensorQuantizationConfig, 
+        self,
+        var: QuantableVariable,
+        config: TensorQuantizationConfig,
         steps: int,
     ) -> None:
-        self.reg                    = AdaroundRegTerm(max_iter=steps)
-        self.config                 = config
-        self.var                    = var
-        self.is_parameter           = self.var.is_parameter
-        self.rounding               = self.initiate_rounding(value=self.var.value, config=self.config, zeta=1.1, gamma=-0.1)
+        self.reg = AdaroundRegTerm(max_iter=steps)
+        self.config = config
+        self.var = var
+        self.is_parameter = self.var.is_parameter
+        self.rounding = self.initiate_rounding(value=self.var.value, config=self.config, zeta=1.1, gamma=-0.1)
 
         if not self.var.is_parameter:
-            raise TypeError(f'Can not create adaround delegator with variable {var.name}, '
-                            'Adaround delegator works only with parameter.')
+            raise TypeError(
+                f"Can not create adaround delegator with variable {var.name}, "
+                "Adaround delegator works only with parameter."
+            )
         if self.config.state == QuantizationStates.PASSIVE:
-            raise TypeError(f'Can not create adaround delegator with variable {var.name}, '
-                            'Adaround delegator can not work with passive parameter.')
+            raise TypeError(
+                f"Can not create adaround delegator with variable {var.name}, "
+                "Adaround delegator can not work with passive parameter."
+            )
         self.param_backup = None
         if self.is_parameter:
             self.param_backup = self.var.value.clone()
 
-    @ staticmethod
-    def initiate_rounding(value: torch.Tensor, config: TensorQuantizationConfig, zeta: float, gamma: float) -> torch.Tensor:
+    @staticmethod
+    def initiate_rounding(
+        value: torch.Tensor, config: TensorQuantizationConfig, zeta: float, gamma: float
+    ) -> torch.Tensor:
         with torch.no_grad():
             scale, offset = config.scale, config.offset
             if config.policy.has_property(QuantizationProperty.PER_CHANNEL):
@@ -99,7 +113,7 @@ class AdaRoundDelegator(TorchQuantizeDelegator):
                 scale = scale.view(shape)
 
             rounding = (value / scale) - (value / scale).floor()
-            rounding = - torch.log((zeta - gamma) / (rounding - gamma) - 1)
+            rounding = -torch.log((zeta - gamma) / (rounding - gamma) - 1)
             rounding = torch.zeros_like(rounding).copy_(rounding)
             rounding.requires_grad = True
         return rounding
@@ -119,7 +133,7 @@ class AdaRoundDelegator(TorchQuantizeDelegator):
         weight = torch.clamp(weight + offset, self.config.quant_min, self.config.quant_max)
         weight = (weight - offset) * scale
         self.var.value = weight
-    
+
     def withdraw(self) -> None:
         with torch.no_grad():
             self.var.value.copy_(self.param_backup)
@@ -162,12 +176,14 @@ class ChannelSplitPass(QuantizationOptimizationPass):
           \/ duplicate      \/                                    \/                 \/ duplicate
     (C2+C,C1,H1,W1)    (C3,C2+C,H2,W2)                      (C2+C,C1,H1,W1)    (C3,C2+C,H2,W2)
     """
-    def __init__(self,
-                interested_layers: List[str],
-                search_directions: List[str] = None,
-                expand_ratio: float=0.1,
-                split_ratio: float=0.5,
-                grid_aware: bool=True
+
+    def __init__(
+        self,
+        interested_layers: List[str],
+        search_directions: List[str] = None,
+        expand_ratio: float = 0.1,
+        split_ratio: float = 0.5,
+        grid_aware: bool = True,
     ) -> None:
         """ChannelSplitPass, try this when other algorithms fail to improve
         your per-tensor quantization accuracy, interested_layers and
@@ -187,15 +203,17 @@ class ChannelSplitPass(QuantizationOptimizationPass):
         self.search_directions = search_directions
 
         if not self.search_directions or len(search_directions) != len(interested_layers):
-            ppq_warning('You do not provide a valid search direction. '
-                        'All layer will split with its upstream layers by default.')
-            self.search_directions = ['up' for _ in self.interested_layers]
+            ppq_warning(
+                "You do not provide a valid search direction. "
+                "All layer will split with its upstream layers by default."
+            )
+            self.search_directions = ["up" for _ in self.interested_layers]
 
         self.expand_ratio = expand_ratio
         self.grid_aware = grid_aware
         self.split_ratio = split_ratio
         self.current_search_direction = None
-        super().__init__(name='Channel Split Pass')
+        super().__init__(name="Channel Split Pass")
 
     def calculate_scale(self, split_op: QuantableOperation) -> torch.Tensor:
         config = split_op.config.input_quantization_config[1]
@@ -205,15 +223,16 @@ class ChannelSplitPass(QuantizationOptimizationPass):
         return config.scale
 
     def flip(self, op: Operation) -> bool:
-        return (self.current_search_direction == 'down') != (op.type == 'ConvTranspose' or (op.type == 'Gemm'\
-            and op.attributes.get('transB', 0) == 0))
+        return (self.current_search_direction == "down") != (
+            op.type == "ConvTranspose" or (op.type == "Gemm" and op.attributes.get("transB", 0) == 0)
+        )
 
     def OCS_forward(self, split_op: Operation) -> List[int]:
         weight = split_op.parameters[0].value
         axes = list(range(weight.ndim))
 
         # update bias when the out dimension needs half-down and duplicate
-        update_bias = (self.current_search_direction == 'down' and len(split_op.parameters) > 1)
+        update_bias = self.current_search_direction == "down" and len(split_op.parameters) > 1
         if update_bias:
             bias = split_op.parameters[1].value
 
@@ -226,8 +245,9 @@ class ChannelSplitPass(QuantizationOptimizationPass):
         in_channels_to_copy = []
         orig_idx_dict = {}
         if self.grid_aware:
-            assert isinstance(split_op, QuantableOperation), (
-                f'Operation {split_op.name} is not quantable, can not be splited via this function.')
+            assert isinstance(
+                split_op, QuantableOperation
+            ), f"Operation {split_op.name} is not quantable, can not be splited via this function."
             w_scale = self.calculate_scale(split_op)
 
         for c in range(ocs_channels):
@@ -236,38 +256,42 @@ class ChannelSplitPass(QuantizationOptimizationPass):
             max_per_channel = torch.max(flatten_weight.abs(), 1)[0]
             idxs = torch.argsort(max_per_channel, descending=True)
             split_idx = idxs[0].item()
-            ch_slice = weight[:, split_idx:(split_idx + 1)].clone()
+            ch_slice = weight[:, split_idx : (split_idx + 1)].clone()
             ch_slice_half = ch_slice / 2
             ch_slice_zero = torch.zeros_like(ch_slice)
 
             # for a top-down search, we need to directly half-down the weight and bias
-            if self.current_search_direction == 'up':
+            if self.current_search_direction == "up":
                 split_value = ch_slice.max() * self.split_ratio
             else:
                 split_value = 0
 
-            if (not self.grid_aware) or self.current_search_direction == 'down':
+            if (not self.grid_aware) or self.current_search_direction == "down":
                 ch_slice_1 = torch.where(torch.abs(ch_slice) > split_value, ch_slice_half, ch_slice)
                 ch_slice_2 = torch.where(torch.abs(ch_slice) > split_value, ch_slice_half, ch_slice_zero)
             else:
                 # assert per-tensor
                 ch_slice_half /= w_scale
-                ch_slice_1 = torch.where(torch.abs(ch_slice) > split_value, ch_slice_half-0.25, ch_slice / w_scale) * w_scale
-                ch_slice_2 = torch.where(torch.abs(ch_slice) > split_value, ch_slice_half+0.25, ch_slice_zero) * w_scale
-            weight[:, split_idx:(split_idx+1)] = ch_slice_1
+                ch_slice_1 = (
+                    torch.where(torch.abs(ch_slice) > split_value, ch_slice_half - 0.25, ch_slice / w_scale) * w_scale
+                )
+                ch_slice_2 = (
+                    torch.where(torch.abs(ch_slice) > split_value, ch_slice_half + 0.25, ch_slice_zero) * w_scale
+                )
+            weight[:, split_idx : (split_idx + 1)] = ch_slice_1
             weight = torch.cat([weight, ch_slice_2], dim=1)
 
             if update_bias:
-                bias_slice_half = bias[split_idx:(split_idx+1)] / 2
+                bias_slice_half = bias[split_idx : (split_idx + 1)] / 2
                 bias[split_idx] = bias_slice_half
                 bias = torch.cat([bias, bias_slice_half], dim=0)
 
             if split_idx < num_channels:
                 in_channels_to_copy.append(split_idx)
-                orig_idx_dict[num_channels+c] = split_idx
+                orig_idx_dict[num_channels + c] = split_idx
             else:
                 in_channels_to_copy.append(orig_idx_dict[split_idx])
-                orig_idx_dict[num_channels+c] = orig_idx_dict[split_idx]
+                orig_idx_dict[num_channels + c] = orig_idx_dict[split_idx]
 
         # permute back
         if self.flip(split_op):
@@ -287,14 +311,18 @@ class ChannelSplitPass(QuantizationOptimizationPass):
         if self.flip(counterpart_op):
             weight = weight.permute(1, 0, *axes[2:]).contiguous()
 
-        weight_split = torch.index_select(weight, dim=0, index=torch.tensor(in_channels_to_copy, dtype=torch.int64, device=weight.device))
+        weight_split = torch.index_select(
+            weight, dim=0, index=torch.tensor(in_channels_to_copy, dtype=torch.int64, device=weight.device)
+        )
         weight = torch.cat([weight, weight_split], dim=0)
 
         # update bias when the output dimension needs duplicate
-        update_bias = (self.current_search_direction == 'up' and len(counterpart_op.parameters) > 1)
+        update_bias = self.current_search_direction == "up" and len(counterpart_op.parameters) > 1
         if update_bias:
             bias = counterpart_op.parameters[1].value
-            bias_split = torch.index_select(bias, dim=0, index=torch.tensor(in_channels_to_copy, dtype=torch.int64, device=bias.device))
+            bias_split = torch.index_select(
+                bias, dim=0, index=torch.tensor(in_channels_to_copy, dtype=torch.int64, device=bias.device)
+            )
             bias = torch.cat([bias, bias_split], dim=0)
 
         # flip back
@@ -306,8 +334,8 @@ class ChannelSplitPass(QuantizationOptimizationPass):
         if update_bias:
             counterpart_op.parameters[1].value = bias
 
-    def check(self, graph: BaseGraph, path:Path) -> bool:
-        if self.current_search_direction == 'up':
+    def check(self, graph: BaseGraph, path: Path) -> bool:
+        if self.current_search_direction == "up":
             for op in path.tolist()[1:]:
                 if len(graph.get_downstream_operations(op)) != 1:
                     return False
@@ -318,18 +346,26 @@ class ChannelSplitPass(QuantizationOptimizationPass):
                     return False
             upstream_op, downstream_op = path[0], path[-1]
         # not support group conv yet
-        if upstream_op.attributes.get('group', 1) != 1 or downstream_op.attributes.get('group', 1) != 1:
+        if upstream_op.attributes.get("group", 1) != 1 or downstream_op.attributes.get("group", 1) != 1:
             return False
         # should have as least one weight parameter
-        if upstream_op.type == 'Gemm' and len(upstream_op.parameters) < 1 or\
-            downstream_op.type == 'Gemm' and len(downstream_op.parameters) < 1:
+        if (
+            upstream_op.type == "Gemm"
+            and len(upstream_op.parameters) < 1
+            or downstream_op.type == "Gemm"
+            and len(downstream_op.parameters) < 1
+        ):
             return False
 
         # check if weight shapes of upstream and downstream computing ops match
         up_axis, down_axis = 0, 1
-        if upstream_op.type == 'ConvTranspose' or (upstream_op.type == 'Gemm' and upstream_op.attributes.get('transB', 0) == 0):
+        if upstream_op.type == "ConvTranspose" or (
+            upstream_op.type == "Gemm" and upstream_op.attributes.get("transB", 0) == 0
+        ):
             up_axis = 1
-        if downstream_op.type == 'ConvTranspose' or (downstream_op.type == 'Gemm' and downstream_op.attributes.get('transB', 0) == 0):
+        if downstream_op.type == "ConvTranspose" or (
+            downstream_op.type == "Gemm" and downstream_op.attributes.get("transB", 0) == 0
+        ):
             down_axis = 0
 
         if upstream_op.parameters[0].meta.shape[up_axis] != downstream_op.parameters[0].meta.shape[down_axis]:
@@ -337,7 +373,7 @@ class ChannelSplitPass(QuantizationOptimizationPass):
 
         return True
 
-    def modify_meta(self, path:Path, num_channels:int) -> None:
+    def modify_meta(self, path: Path, num_channels: int) -> None:
         # all the activations along the path and changed params
         # needs modifying their meta info, i.e., add up the
         # duplicated channels to the second dimension
@@ -345,7 +381,7 @@ class ChannelSplitPass(QuantizationOptimizationPass):
             for var in op.inputs:
                 if var.is_parameter:
                     op.meta_data.input_metas[op.inputs.index(var)] = TensorMeta.parsing_from_torch_tensor(var.value)
-        path_ = path.tolist()[1:] if self.current_search_direction == 'up' else path.tolist()[:-1]
+        path_ = path.tolist()[1:] if self.current_search_direction == "up" else path.tolist()[:-1]
         for op in path_:
             output_meta = op.meta_data.output_metas[0]
             shape = output_meta.shape
@@ -365,42 +401,40 @@ class ChannelSplitPass(QuantizationOptimizationPass):
                     elif quant_config.state == QuantizationStates.PASSIVE:
                         quant_config.state = QuantizationStates.PASSIVE_INIT
 
-
-    def optimize(self, graph: BaseGraph,
-                 dataloader: Iterable, executor: BaseGraphExecutor,
-                 **kwargs) -> None:
+    def optimize(self, graph: BaseGraph, dataloader: Iterable, executor: BaseGraphExecutor, **kwargs) -> None:
 
         search_engine = SearchableGraph(graph)
 
         for name, search_direction in zip(self.interested_layers, self.search_directions):
             if name not in graph.operations:
-                ppq_warning(f'Can not find operation {name} in your graph, skip its split.')
+                ppq_warning(f"Can not find operation {name} in your graph, skip its split.")
                 continue
             op = graph.operations[name]
             if not op.is_computing_op or not isinstance(op, QuantableOperation):
-                ppq_warning(f'Operation {name} can not be splited via channel spilt function, '
-                            'cause it is not quantable or it has no parameter.')
+                ppq_warning(
+                    f"Operation {name} can not be splited via channel spilt function, "
+                    "cause it is not quantable or it has no parameter."
+                )
                 continue
 
             self.current_search_direction = search_direction
             matching = search_engine.path_matching(
                 sp_expr=lambda x: x.name == name,
-                rp_expr=lambda x, y: True, # be careful when choosing interested_layers, we assume a reasonable path
+                rp_expr=lambda x, y: True,  # be careful when choosing interested_layers, we assume a reasonable path
                 ep_expr=lambda x: x.is_computing_op,
-                direction=search_direction
+                direction=search_direction,
             )
 
             if len(matching) != 1:
-                ppq_warning(f'Can not find a counterpart of operation {name}, '
-                            'graph is too complex.')
+                ppq_warning(f"Can not find a counterpart of operation {name}, " "graph is too complex.")
                 continue
 
             path = matching[0]
             if not self.check(graph, path):
-                logger.warning(f'Not support such path due to op constraints for now')
+                logger.warning(f"Not support such path due to op constraints for now")
                 continue
 
-            if search_direction == 'up':
+            if search_direction == "up":
                 logger.info(f"Now processing path {'--'.join(reversed([op.name for op in path]))}")
             else:
                 logger.info(f"Now processing path {'--'.join([op.name for op in path])}")
@@ -430,30 +464,37 @@ class AdaroundPass(TrainingBasedPass):
     OPTIM_ADVOPT_GRAPH_MAXSIZE in ppq.core.common, and by default every block
     will be trained for 300 epochs, which takes certain long time. The
     optimization goal of every block is.
+
                 Loss = LpNormLoss(y, y^) + lambda * rounding_loss(v)
     where y is the output of the current block running in fp32 mode, and y^ is the output of the current block running
     in quant mode, lambda is a hyperparameter adjusting scales of rounding loss, and v is the element-wise rounding
     parameter applied to weights of every computing op in the block.
     """
-    def __init__(self, name: str = 'Block-wise Adaround Reconstruction',
-        interested_layers: List[str] = [], is_scale_trainable: bool = False,
-        steps: int = 8000, lr: float = 1e-3, gamma: float = 1.0,
-        collecting_device: str ='cuda', block_size: int = 4
-    ) -> None:
-        super().__init__(name = name)
-        self.interested_layers  = interested_layers
-        self.lr                 = lr
-        self.gamma              = gamma
-        self.steps              = steps
-        self.block_size         = block_size
-        self.collecting_device  = collecting_device
-        self.is_scale_trainable = is_scale_trainable
-        self.loss_fn            = torch_mean_square_error
 
+    def __init__(
+        self,
+        name: str = "Block-wise Adaround Reconstruction",
+        interested_layers: List[str] = [],
+        is_scale_trainable: bool = False,
+        steps: int = 8000,
+        lr: float = 1e-3,
+        gamma: float = 1.0,
+        collecting_device: str = "cuda",
+        block_size: int = 4,
+    ) -> None:
+        super().__init__(name=name)
+        self.interested_layers = interested_layers
+        self.lr = lr
+        self.gamma = gamma
+        self.steps = steps
+        self.block_size = block_size
+        self.collecting_device = collecting_device
+        self.is_scale_trainable = is_scale_trainable
+        self.loss_fn = torch_mean_square_error
 
     def tune_block_weight_scale(
-        self, block: TrainableBlock, steps: int=900, 
-        loss_fn: Callable = torch_mean_square_error) -> None:
+        self, block: TrainableBlock, steps: int = 900, loss_fn: Callable = torch_mean_square_error
+    ) -> None:
         # before we tune weight roundings and activation scales, we optimize weight scale by
         # minimizing MSE(W, W^), 900 epochs would be enough in this non-overfit setting. Note
         # that this is usually unnecessary in 8 bit quantization, but we do it it anyway and
@@ -463,7 +504,8 @@ class AdaroundPass(TrainingBasedPass):
                 c, v = op.input_quant_config[1], op.inputs[1]
                 delegator = LSQDelegator(config=c, var=v, is_parameter_trainable=False)
                 params = delegator.trainable_tensors()
-                if len(params) == 0: continue
+                if len(params) == 0:
+                    continue
 
                 optimizer = torch.optim.Adam(params, lr=self.lr)
                 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, [int(steps / 2), int(steps * 2 / 3)])
@@ -480,18 +522,25 @@ class AdaroundPass(TrainingBasedPass):
                 if post_loss > initial_loss:
                     delegator.withdraw()
 
-
-    def finetune(self, steps: int, learning_rate: float, block: TrainableBlock, executor: TorchExecutor,
-        qt_inputs: List[Dict[str, torch.Tensor]], fp_outputs: List[Dict[str, torch.Tensor]], 
-        optimizer: torch.optim.Optimizer=None, scheduler: object=None) -> Tuple[float, float]:
+    def finetune(
+        self,
+        steps: int,
+        learning_rate: float,
+        block: TrainableBlock,
+        executor: TorchExecutor,
+        qt_inputs: List[Dict[str, torch.Tensor]],
+        fp_outputs: List[Dict[str, torch.Tensor]],
+        optimizer: torch.optim.Optimizer = None,
+        scheduler: object = None,
+    ) -> Tuple[float, float]:
 
         # step - 1: enable gradient for training.
         self.enable_block_gradient(block)
 
         # record pre training loss.
         pre_loss = self.compute_block_loss(
-            block=block, qt_inputs=qt_inputs, fp_outputs=fp_outputs,
-            executor=executor, loss_fn=self.loss_fn)
+            block=block, qt_inputs=qt_inputs, fp_outputs=fp_outputs, executor=executor, loss_fn=self.loss_fn
+        )
 
         # tune block weight scale
         self.tune_block_weight_scale(block=block)
@@ -499,17 +548,19 @@ class AdaroundPass(TrainingBasedPass):
         # collect trainable params
         trainable_params, delegators = [], {}
         for op in block.rps:
-            if not isinstance(op, QuantableOperation): continue
+            if not isinstance(op, QuantableOperation):
+                continue
 
             # register quant delegator
             for cfg, var in op.config_with_variable:
-                if cfg.state not in {QuantizationStates.ACTIVATED, QuantizationStates.SLAVE}: continue
+                if cfg.state not in {QuantizationStates.ACTIVATED, QuantizationStates.SLAVE}:
+                    continue
                 if var.is_parameter and cfg.state not in {QuantizationStates.PASSIVE}:
                     delegator = AdaRoundDelegator(config=cfg, var=var, steps=steps)
                     trainable_params.extend(delegator.trainable_tensors())
                     executor.register_quantize_delegate(config=cfg, delegator=delegator)
                     delegators[cfg] = delegator
-                elif self.is_scale_trainable: 
+                elif self.is_scale_trainable:
                     delegator = LSQDelegator(config=cfg, var=var, is_offset_trainable=False)
                     trainable_params.extend(delegator.trainable_tensors())
                     executor.register_quantize_delegate(config=cfg, delegator=delegator)
@@ -527,10 +578,11 @@ class AdaroundPass(TrainingBasedPass):
             optimizer = torch.optim.Adam(tensors, lr=learning_rate)
 
         dataset_length = len(qt_inputs)
-        if dataset_length == 0: raise ValueError('Dataset is empty.')
+        if dataset_length == 0:
+            raise ValueError("Dataset is empty.")
 
         # step 2 - training procedure
-        for idx in tqdm(range(steps), desc='# Tuning Procedure '):
+        for idx in tqdm(range(steps), desc="# Tuning Procedure "):
             qt_input, fp_output = qt_inputs[idx % dataset_length], fp_outputs[idx % dataset_length]
 
             # forward
@@ -539,14 +591,14 @@ class AdaroundPass(TrainingBasedPass):
             output_names = [name for name in fp_output]
 
             qt_output = executor.partial_graph_forward(
-                operations=block.rps, feed_dict=feed_dict, 
-                output_names=output_names)
+                operations=block.rps, feed_dict=feed_dict, output_names=output_names
+            )
 
             # compute loss
             loss = 0.0
             for idx, name in enumerate(output_names):
                 loss += self.loss_fn(qt_output[idx], fp_output[name].to(executor._device))
-            
+
             # collect reg terms
             for delegator in delegators.values():
                 if isinstance(delegator, AdaRoundDelegator):
@@ -556,17 +608,20 @@ class AdaroundPass(TrainingBasedPass):
             assert isinstance(loss, torch.Tensor)
             loss.backward()
             optimizer.step()
-            if scheduler is not None: scheduler.step()
+            if scheduler is not None:
+                scheduler.step()
 
         # step - 3: record post training loss
         post_loss = self.compute_block_loss(
-            block=block, qt_inputs=qt_inputs, fp_outputs=fp_outputs,
-            executor=executor, loss_fn=self.loss_fn)
+            block=block, qt_inputs=qt_inputs, fp_outputs=fp_outputs, executor=executor, loss_fn=self.loss_fn
+        )
 
         # check and withdraw
         for cfg, delegator in delegators.items():
-            if post_loss > pre_loss: delegator.withdraw()
-            else: delegator.finalize()
+            if post_loss > pre_loss:
+                delegator.withdraw()
+            else:
+                delegator.finalize()
             executor.remove_quantize_delegate(config=cfg)
 
         # disable gradient for evaluation.
@@ -576,91 +631,103 @@ class AdaroundPass(TrainingBasedPass):
         torch.cuda.empty_cache()
         return pre_loss, post_loss
 
-
-    def optimize(self,
-                 graph: BaseGraph,
-                 dataloader: Iterable,
-                 executor: TorchExecutor,
-                 collate_fn: Callable,
-                 **kwargs
+    def optimize(
+        self, graph: BaseGraph, dataloader: Iterable, executor: TorchExecutor, collate_fn: Callable, **kwargs
     ) -> None:
         blocks = self.split_graph_into_blocks(
-            graph=graph, executing_order=executor._executing_order, 
-            blocksize=self.block_size, interested_layers=self.interested_layers)
+            graph=graph,
+            executing_order=executor._executing_order,
+            blocksize=self.block_size,
+            interested_layers=self.interested_layers,
+        )
 
         # do per-block finetune
         for block_idx, block in enumerate(blocks):
             # collect data for training
             qt_inputs, fp_outputs = self.collect(
-                graph=graph, block=block, executor=executor, 
-                dataloader=dataloader, collate_fn=collate_fn, 
-                collecting_device=self.collecting_device)
+                graph=graph,
+                block=block,
+                executor=executor,
+                dataloader=dataloader,
+                collate_fn=collate_fn,
+                collecting_device=self.collecting_device,
+            )
 
-            print(f'# Block [{block_idx + 1} / {len(blocks)}]: '
-                  f'[{block.sp.name} -> {block.ep.name}]')
+            print(f"# Block [{block_idx + 1} / {len(blocks)}]: " f"[{block.sp.name} -> {block.ep.name}]")
             pre_loss, post_loss = self.finetune(
-                steps=self.steps, learning_rate=self.lr, block=block, 
-                qt_inputs=qt_inputs, fp_outputs=fp_outputs, executor=executor)
-            print(f'# Tuning Finished  : ({pre_loss:.4f} -> {min(pre_loss, post_loss):.4f}) [Block Loss]')
-            print('') # blank line
+                steps=self.steps,
+                learning_rate=self.lr,
+                block=block,
+                qt_inputs=qt_inputs,
+                fp_outputs=fp_outputs,
+                executor=executor,
+            )
+            print(f"# Tuning Finished  : ({pre_loss:.4f} -> {min(pre_loss, post_loss):.4f}) [Block Loss]")
+            print("")  # blank line
 
 
 class PPLCudaAddConvReluMerge(QuantizationOptimizationPass):
     def __init__(self) -> None:
-        super().__init__(name='PPL CUDA Conv(Relu) - Add - Relu Merge')
+        super().__init__(name="PPL CUDA Conv(Relu) - Add - Relu Merge")
 
     def is_same_platform(self, operations: List[Operation]):
         platforms = [operation.platform for operation in operations]
         return all([platform == platforms[0] for platform in platforms])
 
-    def optimize(self,
-                 processor: BaseGraph,
-                 dataloader: Iterable,
-                 executor: BaseGraphExecutor,
-                 **kwargs) -> None:
-
+    def optimize(self, processor: BaseGraph, dataloader: Iterable, executor: BaseGraphExecutor, **kwargs) -> None:
         def ep_expr(operation: Operation):
-            if not isinstance(operation, QuantableOperation): return False
-            if operation.type == 'Conv': return True
+            if not isinstance(operation, QuantableOperation):
+                return False
+            if operation.type == "Conv":
+                return True
             if operation.type in PPLCUDA_ACTIVATIONS:
                 upstream_ops = graph.get_upstream_operations(operation=operation)
-                if len(upstream_ops) == 0 and upstream_ops[0].type == 'Conv': return True
-                if upstream_ops[0] in merged: return True
+                if len(upstream_ops) == 0 and upstream_ops[0].type == "Conv":
+                    return True
+                if upstream_ops[0] in merged:
+                    return True
             return False
 
         def retrospect(operation: QuantableOperation) -> QuantableOperation:
-            if not isinstance(operation, QuantableOperation): return None
-            if len(graph.get_upstream_operations(operation)) != 1: return None
+            if not isinstance(operation, QuantableOperation):
+                return None
+            if len(graph.get_upstream_operations(operation)) != 1:
+                return None
 
             parent = graph.get_upstream_operations(operation)[0]
-            if parent.type != 'Conv': return None
-            if not isinstance(parent, QuantableOperation): return None
+            if parent.type != "Conv":
+                return None
+            if not isinstance(parent, QuantableOperation):
+                return None
             return parent
 
         def merge_fn(operation: QuantableOperation):
-            assert isinstance(operation, QuantableOperation) and operation.type == 'Add'
+            assert isinstance(operation, QuantableOperation) and operation.type == "Add"
             # check if upstream ops can be merged
             up_ops = graph.get_upstream_operations(operation)
-            if not self.is_same_platform(up_ops + [operation]): return
+            if not self.is_same_platform(up_ops + [operation]):
+                return
 
             # Conv - Add - Relu Merge
             config = operation.config.output_quantization_config[0]
 
             # Step - 1: merge add output to next activation.
             down_ops = graph.get_downstream_operations(operation)
-            if (len(down_ops) == 1 and
-                down_ops[0].type in PPLCUDA_ACTIVATIONS and
-                isinstance(down_ops[0], QuantableOperation) and
-                down_ops[0].platform == operation.platform):
+            if (
+                len(down_ops) == 1
+                and down_ops[0].type in PPLCUDA_ACTIVATIONS
+                and isinstance(down_ops[0], QuantableOperation)
+                and down_ops[0].platform == operation.platform
+            ):
                 config.dominated_by = down_ops[0].config.output_quantization_config[0]
 
             # Step - 2: disable input conv's quantization(only one).
             up_ops = graph.get_upstream_operations(operation)
-            assert len(up_ops) == 2, f'Opeartion {operation.name} should has exact 2 input operations.'
+            assert len(up_ops) == 2, f"Opeartion {operation.name} should has exact 2 input operations."
 
             target_operation = None
             for op in up_ops:
-                if op.type == 'Conv':
+                if op.type == "Conv":
                     target_operation = op
                 elif op.type in PPLCUDA_ACTIVATIONS:
                     target_operation = retrospect(operation)
@@ -677,19 +744,21 @@ class PPLCudaAddConvReluMerge(QuantizationOptimizationPass):
             unchanged = True
 
             search_engine = SearchableGraph(processor)
-            matchings = search_engine(TraversalCommand(
-                sp_expr=lambda x: (x.type == 'Add' and
-                                   isinstance(x, QuantableOperation) and
-                                   x not in merged),
-                rp_expr=lambda x, y: False,
-                ep_expr=ep_expr,
-                direction='up'))
+            matchings = search_engine(
+                TraversalCommand(
+                    sp_expr=lambda x: (x.type == "Add" and isinstance(x, QuantableOperation) and x not in merged),
+                    rp_expr=lambda x, y: False,
+                    ep_expr=ep_expr,
+                    direction="up",
+                )
+            )
 
             # count how many matched inputs does an add operation has.
-            counter = defaultdict(lambda : 0)
+            counter = defaultdict(lambda: 0)
 
             # path[0] is add operation.
-            for path in matchings: counter[path[0]] += 1
+            for path in matchings:
+                counter[path[0]] += 1
 
             for operation, count in counter.items():
                 if count == 2:

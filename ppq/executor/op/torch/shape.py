@@ -3,12 +3,11 @@ from functools import reduce
 from typing import List
 
 import numpy as np
-from ppq.core import (DataType, convert_any_to_python_primary_type,
-                      convert_any_to_torch_tensor)
-from ppq.IR import Operation
 
 import torch
 import torch.nn.functional as F
+from ppq.core import convert_any_to_python_primary_type, convert_any_to_torch_tensor, DataType
+from ppq.IR import Operation
 
 from .base import *
 
@@ -40,6 +39,7 @@ def Shape_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCo
     [value] = values
     shape_tensor = torch.Tensor([k for k in value.shape]).long()
     return shape_tensor
+
 
 def Div_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Performs element-wise binary division (with Numpy-style broadcasting
@@ -73,10 +73,15 @@ def Div_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCont
 
     dividend, divider = values
     quotient = dividend / divider
-    if dividend.dtype in {torch.int16, torch.int64, torch.int8, torch.int32} and \
-        divider.dtype in {torch.int16, torch.int64, torch.int8, torch.int32}:
+    if dividend.dtype in {torch.int16, torch.int64, torch.int8, torch.int32} and divider.dtype in {
+        torch.int16,
+        torch.int64,
+        torch.int8,
+        torch.int32,
+    }:
         quotient = quotient.type(torch.int64)
     return quotient
+
 
 def Mul_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Performs element-wise binary multiplication (with Numpy-style
@@ -109,6 +114,7 @@ def Mul_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCont
     multiplicand, multiplier = values
     return multiplicand * multiplier
 
+
 def Add_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Performs element-wise binary addition (with Numpy-style broadcasting
     support).
@@ -140,11 +146,13 @@ def Add_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCont
     a, b = values
     return a + b
 
+
 def And_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=2, max_num_of_input=2)
     a, b = values
     return a & b
+
 
 def Sub_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Performs element-wise binary subtraction (with Numpy-style broadcasting
@@ -177,6 +185,7 @@ def Sub_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCont
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=2, max_num_of_input=2)
     minuend, subtrahend = values
     return minuend - subtrahend
+
 
 def Cast_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """The operator casts the elements of a given input tensor to a data type
@@ -218,13 +227,17 @@ def Cast_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCon
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
     [converting] = values
-    new_type = DataType.to_torch(GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='to', compulsive=True))
+    new_type = DataType.to_torch(GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="to", compulsive=True))
     old_type = converting.dtype
     if new_type != old_type:
         return converting.type(new_type)
-    else: return converting
+    else:
+        return converting
 
-def Concat_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Concat_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Concatenate a list of tensors into a single tensor. All input tensors
     must have the same shape, except for the dimension size of the axis to
     concatenate on.
@@ -253,7 +266,7 @@ def Concat_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendC
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1)
-    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='axis', compulsive=True)
+    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="axis", compulsive=True)
 
     # zero-dimensional tensor cannot be concatenated
     # must extend 1 dimension for concat.
@@ -264,6 +277,7 @@ def Concat_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendC
         concat_view.append(value)
 
     return torch.cat(concat_view, axis=axis)
+
 
 def Slice_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Produces a slice of the input tensor along multiple axes. Similar to
@@ -319,10 +333,11 @@ def Slice_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCo
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=3, max_num_of_input=5)
-    data, starts, ends = values[: 3]
-    axes  = values[3] if len(values) > 3 else None
+    data, starts, ends = values[:3]
+    axes = values[3] if len(values) > 3 else None
     steps = values[4] if len(values) > 4 else torch.ones_like(starts)
-    if axes is not None: axes = axes.tolist()
+    if axes is not None:
+        axes = axes.tolist()
     starts, ends, steps = starts.tolist(), ends.tolist(), steps.tolist()
 
     slice_args = list(zip(starts, ends, steps))
@@ -343,14 +358,18 @@ def Slice_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCo
     if any([step < 0 for step in steps]):
         negative_axes = []
         for idx, step in enumerate(steps):
-            if step < 0: negative_axes.append(idx)
-            slice_func[idx] = slice(- slice_func[idx].start - 1, - slice_func[idx].stop + 1, -slice_func[idx].step)
+            if step < 0:
+                negative_axes.append(idx)
+            slice_func[idx] = slice(-slice_func[idx].start - 1, -slice_func[idx].stop + 1, -slice_func[idx].step)
         data = torch.flip(data, dims=axes)
 
     output = data[slice_func]
     return output
 
-def Constant_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Constant_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """A constant tensor. Exactly one of the two attributes, either value or
     sparse_value, must be specified.
 
@@ -377,9 +396,12 @@ def Constant_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBacken
         torch.Tensor: [description]
     """
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=0, max_num_of_input=0)
-    return op.attributes['value']
+    return op.attributes["value"]
 
-def Unsqueeze_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Unsqueeze_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Insert single-dimensional entries to the shape of an input tensor
     (data).
 
@@ -430,18 +452,24 @@ def Unsqueeze_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBacke
         ASSERT_ALL_TENSORS_AT_SAME_DEVICE(op=op, values=values)
         ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
         [unsqueezing_tensor] = values
-        axes = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='axes', compulsive=True)
+        axes = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="axes", compulsive=True)
 
     if isinstance(axes, list):
         for squeezing_dim in sorted(axes, reverse=True):
             unsqueezing_tensor = torch.unsqueeze(unsqueezing_tensor, squeezing_dim)
     elif isinstance(axes, int):
         unsqueezing_tensor = torch.unsqueeze(unsqueezing_tensor, axes)
-    else: raise TypeError(f'Parameter axes of operation {op.name} misunderstood, '
-                          f'expect int value of list of int, while {type(axes)} was given.')
+    else:
+        raise TypeError(
+            f"Parameter axes of operation {op.name} misunderstood, "
+            f"expect int value of list of int, while {type(axes)} was given."
+        )
     return unsqueezing_tensor
 
-def Squeeze_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Squeeze_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Remove single-dimensional entries from the shape of a tensor. Takes an
     input axes with a list of axes to squeeze. If axes is not provided, all the
     single dimensions will be removed from the shape. If an axis is selected
@@ -478,24 +506,33 @@ def Squeeze_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackend
     else:
         ASSERT_ALL_TENSORS_AT_SAME_DEVICE(op=op, values=values)
         ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
-        [squeezing_tensor], axes = values, GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='axes', compulsive=False, default=None)
-    
+        [squeezing_tensor], axes = values, GET_ATTRIBUTE_FROM_OPERATION(
+            op=op, attribute="axes", compulsive=False, default=None
+        )
+
     # common part
     if axes is None:
         axes = []
         shape = squeezing_tensor.shape
         for dim, s in enumerate(shape):
-            if s == 1: axes.append(dim)
+            if s == 1:
+                axes.append(dim)
     if isinstance(axes, list):
         for squeezing_dim in sorted(axes, reverse=True):
             squeezing_tensor = torch.squeeze(squeezing_tensor, squeezing_dim)
     elif isinstance(axes, int):
         squeezing_tensor = torch.squeeze(squeezing_tensor, axes)
-    else: raise TypeError(f'Parameter axes of operation {op.name} misunderstood, '
-                          f'expect int value of list of int, while {type(axes)} was given.')
+    else:
+        raise TypeError(
+            f"Parameter axes of operation {op.name} misunderstood, "
+            f"expect int value of list of int, while {type(axes)} was given."
+        )
     return squeezing_tensor
 
-def Gather_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Gather_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Given data tensor of rank r >= 1, and indices tensor of rank q, gather
     entries of the axis dimension of data (by default outer-most one as axis=0)
     indexed by indices,
@@ -529,11 +566,12 @@ def Gather_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendC
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=2, max_num_of_input=2)
-    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='axis', default=0, compulsive=False)
+    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="axis", default=0, compulsive=False)
     input_data, indices = values
     array_idx = [indices if axis == i else slice(dim) for i, dim in enumerate(input_data.shape)]
     output = input_data[array_idx]
     return output
+
 
 def Range_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Generate a tensor containing a sequence of numbers that begin at start
@@ -583,7 +621,10 @@ def Range_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCo
     output = torch.arange(start, limit, delta)
     return output
 
-def ConstantOfShape_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def ConstantOfShape_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Generate a tensor with given value and shape.
 
     Attributes
@@ -611,16 +652,21 @@ def ConstantOfShape_forward(op: Operation, values: List[torch.Tensor], ctx: Torc
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
-    value = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='value', compulsive=False, default=0.0)
+    value = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="value", compulsive=False, default=0.0)
     [shape], fill_value = values, convert_any_to_python_primary_type(value)
-    output = torch.Tensor().new_full(
-        size=shape.tolist(), fill_value=fill_value)
-    if isinstance(fill_value, int): output = output.long()
-    elif isinstance(fill_value, float): output = output.float()
-    else: raise TypeError(f'Can not parse value type{type(value)}.')
+    output = torch.Tensor().new_full(size=shape.tolist(), fill_value=fill_value)
+    if isinstance(fill_value, int):
+        output = output.long()
+    elif isinstance(fill_value, float):
+        output = output.float()
+    else:
+        raise TypeError(f"Can not parse value type{type(value)}.")
     return output
 
-def Expand_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Expand_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Broadcast the input tensor following the given shape and the broadcast
     rule.
 
@@ -660,6 +706,7 @@ def Expand_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendC
     tensor, repeats = values
     return tensor * torch.ones(tuple(repeats.type(torch.int64).tolist())).type(torch.int64)
 
+
 def Tile_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Constructs a tensor by tiling a given tensor. This is the same as
     function tile in Numpy, but no broadcast.
@@ -696,20 +743,24 @@ def Tile_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCon
     # the tiles parameter is a scalar in caffe
 
     # caffe op attributes
-    axis = op.attributes.get('axis', None)
-    tiles = op.attributes.get('tiles', None)
+    axis = op.attributes.get("axis", None)
+    tiles = op.attributes.get("tiles", None)
 
     if axis is not None:
         repeats = [1 for _ in range(input.ndim)]
         repeats[axis] = tiles
     else:
         repeats = convert_any_to_python_primary_type(values[-1])
-        if not isinstance(repeats, list): repeats = [repeats]
+        if not isinstance(repeats, list):
+            repeats = [repeats]
     assert input.ndim == len(repeats)
     output = input.repeat(tuple(repeats))
     return output
 
-def Reshape_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Reshape_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Reshape the input tensor similar to numpy.reshape. First input is the
     data tensor, second input is a shape tensor which specifies the output
     shape. It outputs the reshaped tensor.
@@ -747,9 +798,11 @@ def Reshape_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackend
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=2, max_num_of_input=2)
-    if 'allowzero' in op.attributes: raise NotImplemented('Not implemented yet.')
+    if "allowzero" in op.attributes:
+        raise NotImplemented("Not implemented yet.")
     data, shape = values
     return data.reshape(shape.tolist())
+
 
 def Less_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Returns the tensor resulted from performing the less logical operation
@@ -785,8 +838,10 @@ def Less_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCon
     operand_a, operand_b = values
     if operand_a.dim() >= operand_b.dim() or operand_a.shape > operand_b.shape:
         output = torch.lt(operand_a, operand_b)
-    else: output = torch.gt(operand_a, operand_b)
+    else:
+        output = torch.gt(operand_a, operand_b)
     return output
+
 
 def Where_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Return elements, either from X or Y, depending on condition. Where
@@ -821,7 +876,10 @@ def Where_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCo
     output = torch.where(condition, x, y)
     return output
 
-def Transpose_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Transpose_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Transpose the input tensor similar to numpy.transpose. For example, when
     perm=(1, 0, 2), given an input tensor of shape (1, 2, 3), the output shape
     will be (2, 1, 3).
@@ -848,10 +906,11 @@ def Transpose_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBacke
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
-    perm = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='perm', compulsive=True)
+    perm = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="perm", compulsive=True)
     [data] = values
     output = data.permute(perm)
     return output
+
 
 def Clip_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Clip operator limits the given input within an interval. The interval is
@@ -886,7 +945,10 @@ def Clip_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCon
     output = torch.clamp(*values)
     return output
 
-def Flatten_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Flatten_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Flatten.
 
     Flattens the input tensor into a 2D matrix.
@@ -912,15 +974,17 @@ def Flatten_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackend
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
-    [value], dim = values, GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='axis', compulsive=False, default=1)
+    [value], dim = values, GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="axis", compulsive=False, default=1)
 
     shape = list(value.shape)
     new_shape = [1, -1] if dim == 0 else [reduce(operator.mul, shape[:dim], 1), -1]
     output = value.reshape(new_shape)
     return output
 
+
 def NMS_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     from .default import _NMS_forward
+
     """
     Filter out boxes that have high intersection-over-union (IOU) overlap with previously selected boxes.
     Bounding boxes with score less than score_threshold are removed.
@@ -974,10 +1038,11 @@ def NMS_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCont
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values, force_convert=True)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=2, max_num_of_input=5)
-    bboxs, scores = values[: 2]
+    bboxs, scores = values[:2]
     bboxs = bboxs.to(ctx.executing_device)
     scores = scores.to(ctx.executing_device)
-    return _NMS_forward(op=op, values=[bboxs, scores] + values[2: ]).to('cpu')
+    return _NMS_forward(op=op, values=[bboxs, scores] + values[2:]).to("cpu")
+
 
 def Equal_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Returns the tensor resulted from performing the equal logical operation
@@ -1009,7 +1074,10 @@ def Equal_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCo
     a, b = values
     return torch.eq(a, b)
 
-def ScatterND_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def ScatterND_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """OPSET 11: ScatterND takes three inputs data tensor of rank r >= 1,
     indices tensor of rank q >= 1,
 
@@ -1061,7 +1129,7 @@ def ScatterND_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBacke
     data, indices, updates = values
     # output = data.clone()
     # convert ot numpy for accelerating.
-    output  = data.numpy()
+    output = data.numpy()
     updates = updates.numpy()
     indices = indices.long().numpy()
 
@@ -1069,6 +1137,7 @@ def ScatterND_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBacke
     for idx in np.ndindex(update_indices):
         output[tuple(indices[idx])] = updates[idx]
     return convert_any_to_torch_tensor(output)
+
 
 def TopK_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Retrieve the top-K largest or smallest elements along a specified axis.
@@ -1123,9 +1192,9 @@ def TopK_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCon
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=2, max_num_of_input=2)
-    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='axis', default=-1)
-    largest = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='largest', default=1)
-    sorted = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='sorted', default=1)
+    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="axis", default=-1)
+    largest = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="largest", default=1)
+    sorted = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="sorted", default=1)
     largest, sorted = bool(largest), bool(sorted)
 
     x, k = values
@@ -1133,7 +1202,10 @@ def TopK_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCon
     values, indices = torch.topk(input=x, k=k, dim=axis, largest=largest, sorted=sorted)
     return values, indices
 
-def ReduceMax_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def ReduceMax_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Computes the max of the input tensor's element along the provided axes.
     The resulted tensor has the same rank as the input if keepdims equal 1. If
     keepdims equal 0, then the resulted tensor have the reduced dimension
@@ -1168,21 +1240,25 @@ def ReduceMax_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBacke
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
-    axes = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='axes', default=None)
-    keepdims = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='keepdim', default=1)
+    axes = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="axes", default=None)
+    keepdims = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="keepdim", default=1)
     [data], keepdims = values, bool(keepdims)
 
-    if data.numel() == 0: return data
+    if data.numel() == 0:
+        return data
     if axes is None:
         # The default is to reduce over all the dimensions of the input tensor
         reduced = data.max()
-        if keepdims: reduced = reduced.reshape([1] * data.dim())
+        if keepdims:
+            reduced = reduced.reshape([1] * data.dim())
         return reduced
 
     for axis in axes:
         data = torch.max(data, keepdim=True, dim=axis)
-    if keepdims == False: return torch.squeeze(data)
+    if keepdims == False:
+        return torch.squeeze(data)
     return data
+
 
 def Sqrt_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """
@@ -1207,6 +1283,7 @@ def Sqrt_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCon
     [x] = values
     return torch.sqrt(x)
 
+
 def Log_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Calculates the natural log of the given input tensor, element-wise.
 
@@ -1230,6 +1307,7 @@ def Log_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCont
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
     [input] = values
     return torch.log(input)
+
 
 def Floor_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """
@@ -1256,6 +1334,7 @@ def Floor_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCo
     [x] = values
     return x.floor()
 
+
 def Ceil_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """
     Ceil takes one input data (Tensor) and produces one output data (Tensor)
@@ -1281,7 +1360,10 @@ def Ceil_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCon
     [x] = values
     return x.ceil()
 
-def RoiAlign_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def RoiAlign_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Region of Interest (RoI) align operation described in the Mask R-CNN
     paper. RoiAlign consumes an input tensor X and region of interests (rois)
     to apply pooling across each RoI; it produces a 4-D tensor of shape
@@ -1353,27 +1435,33 @@ def RoiAlign_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBacken
         torch.Tensor: [description]
     """
     from torchvision.ops import roi_align as torch_roi_align
+
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=3, max_num_of_input=3)
     x, rois, batch_indices = values
 
-    output_height  = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='output_height', default=1)
-    output_width   = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='output_width', default=1)
-    sampling_ratio = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='sampling_ratio', default=0)
-    spatial_scale  = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='spatial_scale', default=1.0)
+    output_height = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="output_height", default=1)
+    output_width = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="output_width", default=1)
+    sampling_ratio = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="sampling_ratio", default=0)
+    spatial_scale = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="spatial_scale", default=1.0)
 
-    if rois.shape[1] == 5: boxes = rois
-    elif rois.shape[1] == 4: boxes = [rois]
+    if rois.shape[1] == 5:
+        boxes = rois
+    elif rois.shape[1] == 4:
+        boxes = [rois]
 
     output_size = (output_height, output_width)
-    output = torch_roi_align(
-        x, boxes, output_size, spatial_scale, sampling_ratio)
+    output = torch_roi_align(x, boxes, output_size, spatial_scale, sampling_ratio)
     return output
 
-def PPQDeviceSwitch_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def PPQDeviceSwitch_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
     [value] = values
-    return value.to('cpu')
+    return value.to("cpu")
+
 
 def Exp_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Calculates the exponential of the given input tensor, element-wise.
@@ -1398,7 +1486,10 @@ def Exp_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCont
     [input] = values
     return torch.exp(input)
 
-def Softmax_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Softmax_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """The operator computes the normalized exponential values for the given
     input:
 
@@ -1432,11 +1523,14 @@ def Softmax_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackend
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
     [input] = values
-    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='axis', default=-1)
+    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="axis", default=-1)
     output = F.softmax(input, axis)
     return output
 
-def Sigmoid_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Sigmoid_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """
     Sigmoid takes one input data (Tensor) and produces one output data (Tensor) where the sigmoid function,
         y = 1 / (1 + exp(-x)), is applied to the tensor elementwise.
@@ -1462,7 +1556,10 @@ def Sigmoid_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackend
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
     return torch.sigmoid(values[0])
 
-def Greater_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def Greater_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Returns the tensor resulted from performing the greater logical
     operation elementwise on the input tensors A and B (with Numpy-style
     broadcasting support).
@@ -1497,6 +1594,7 @@ def Greater_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackend
         c = torch.lt(a, b)
     return c
 
+
 def Not_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Returns the negation of the input tensor element-wise.
 
@@ -1518,31 +1616,34 @@ def Not_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCont
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
-    output = ~ values[0]
+    output = ~values[0]
     return output
 
-def MMCVRoiAlign_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def MMCVRoiAlign_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     from mmcv.ops import roi_align as mmcv_roi_align
 
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=2, max_num_of_input=2)
 
-    data, rois = values[: 2]
-    mode = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='mode', default='avg')
-    aligned = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='aligned', default=True)
-    output_height = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='output_height', default=1)
-    output_width = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='output_width', default=1)
-    sampling_ratio = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='sampling_ratio', default=0)
-    spatial_scale = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='spatial_scale', default=1.0)
+    data, rois = values[:2]
+    mode = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="mode", default="avg")
+    aligned = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="aligned", default=True)
+    output_height = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="output_height", default=1)
+    output_width = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="output_width", default=1)
+    sampling_ratio = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="sampling_ratio", default=0)
+    spatial_scale = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="spatial_scale", default=1.0)
 
     output_size = (output_height, output_width)
     if rois.shape[0] == 0:
         # TODO ??? WHY here got a 14
         output = torch.empty([0, data.shape[1], 14, 14])
     else:
-        output = mmcv_roi_align(
-            data, rois, output_size, spatial_scale, sampling_ratio, mode, aligned)
+        output = mmcv_roi_align(data, rois, output_size, spatial_scale, sampling_ratio, mode, aligned)
     return output
+
 
 def Split_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
     """Split a tensor into a list of tensors, along the specified 'axis'.
@@ -1575,29 +1676,36 @@ def Split_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendCo
     """
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
-    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='axis', default=0)
-    split = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='split', compulsive=True)
+    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="axis", default=0)
+    split = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="split", compulsive=True)
 
     [input] = values
     output = torch.split(input, split, axis)
     return output
 
-def GreaterOrEqual_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def GreaterOrEqual_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=2, max_num_of_input=2)
     a, b = values
     return a >= b
 
-def LessOrEqual_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+
+def LessOrEqual_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     ASSERT_ALL_TENSORS_AT_CPU(op=op, values=values)
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=2, max_num_of_input=2)
     a, b = values
     return a <= b
 
+
 def ReduceSum_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs):
     [input_value] = values
-    dim = op.attributes.get('axes', None)
-    keepdim = bool(op.attributes.get('keepdims', 1))
+    dim = op.attributes.get("axes", None)
+    keepdim = bool(op.attributes.get("keepdims", 1))
     if dim is None:
         #  The default is to reduce over all the dimensions of the input tensor
         output = torch.sum(input_value)
@@ -1610,14 +1718,16 @@ def ReduceSum_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBacke
 
 def ScatterElements_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs):
     input_data, indices, updates = values
-    dim = op.attributes.get('axis', 0)
+    dim = op.attributes.get("axis", 0)
     # Negative indices
     indices[indices < 0] += input_data.shape[dim]
     output = input_data.scatter(dim, indices, updates)
     return output
 
 
-def Onehot_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+def Onehot_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     """Produces a one-hot tensor based on inputs. The locations represented by
     the index values in the 'indices' input tensor will have 'on_value' and the
     other locations will have 'off_value' in the output tensor,
@@ -1672,7 +1782,7 @@ def Onehot_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendC
     """
     # implementation from https://github.com/ToriML/onnx2pytorch/blob/master/onnx2pytorch/operations/onehot.py
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=3, max_num_of_input=3)
-    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute='axis', default=-1)
+    axis = GET_ATTRIBUTE_FROM_OPERATION(op=op, attribute="axis", default=-1)
     indices, depth, values = values
 
     off_value, on_value = values
@@ -1689,59 +1799,63 @@ def Onehot_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendC
     return out
 
 
-def Identity_forward(op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs) -> torch.Tensor:
+def Identity_forward(
+    op: Operation, values: List[torch.Tensor], ctx: TorchBackendContext = None, **kwargs
+) -> torch.Tensor:
     ASSERT_NUM_OF_INPUT(op=op, values=values, min_num_of_input=1, max_num_of_input=1)
     return values[0]
 
+
 from .default import Tan_forward, Tanh_forward
+
 SOI_BACKEND_TABLE = {
-    'Shape': Shape_forward,
-    'Div': Div_forward,
-    'Add': Add_forward,
-    'And': And_forward,
-    'Mul': Mul_forward,
-    'Sub': Sub_forward,
-    'Cast': Cast_forward,
-    'Concat': Concat_forward,
-    'Slice': Slice_forward,
-    'Constant': Constant_forward,
-    'Unsqueeze': Unsqueeze_forward,
-    'Squeeze': Squeeze_forward,
-    'Gather': Gather_forward,
-    'Range' : Range_forward,
-    'ConstantOfShape': ConstantOfShape_forward,
-    'Expand': Expand_forward,
-    'Tile': Tile_forward,
-    'Reshape': Reshape_forward,
-    'Less': Less_forward,
-    'Where': Where_forward,
-    'Transpose': Transpose_forward,
-    'Clip': Clip_forward,
-    'Flatten': Flatten_forward,
-    'NonMaxSuppression': NMS_forward,
-    'Equal': Equal_forward,
-    'ScatterND': ScatterND_forward,
-    'TopK': TopK_forward,
-    'ReduceMax': ReduceMax_forward,
-    'Sqrt': Sqrt_forward,
-    'Log': Log_forward,
-    'Floor': Floor_forward,
-    'Ceil': Ceil_forward,
-    'RoiAlign': RoiAlign_forward,
-    'PPQDeviceSwitch': PPQDeviceSwitch_forward,
-    'Exp': Exp_forward,
-    'Softmax': Softmax_forward,
-    'Sigmoid': Sigmoid_forward,
-    'Greater': Greater_forward,
-    'Not': Not_forward,
-    'MMCVRoiAlign': MMCVRoiAlign_forward,
-    'Split': Split_forward,
-    'GreaterOrEqual': GreaterOrEqual_forward,
-    'LessOrEqual': LessOrEqual_forward,
-    'ReduceSum': ReduceSum_forward,
-    'ScatterElements': ScatterElements_forward,
-    'OneHot': Onehot_forward,
-    'Identity': Identity_forward,
-    'Tanh': Tanh_forward,
-    'Tan': Tan_forward
+    "Shape": Shape_forward,
+    "Div": Div_forward,
+    "Add": Add_forward,
+    "And": And_forward,
+    "Mul": Mul_forward,
+    "Sub": Sub_forward,
+    "Cast": Cast_forward,
+    "Concat": Concat_forward,
+    "Slice": Slice_forward,
+    "Constant": Constant_forward,
+    "Unsqueeze": Unsqueeze_forward,
+    "Squeeze": Squeeze_forward,
+    "Gather": Gather_forward,
+    "Range": Range_forward,
+    "ConstantOfShape": ConstantOfShape_forward,
+    "Expand": Expand_forward,
+    "Tile": Tile_forward,
+    "Reshape": Reshape_forward,
+    "Less": Less_forward,
+    "Where": Where_forward,
+    "Transpose": Transpose_forward,
+    "Clip": Clip_forward,
+    "Flatten": Flatten_forward,
+    "NonMaxSuppression": NMS_forward,
+    "Equal": Equal_forward,
+    "ScatterND": ScatterND_forward,
+    "TopK": TopK_forward,
+    "ReduceMax": ReduceMax_forward,
+    "Sqrt": Sqrt_forward,
+    "Log": Log_forward,
+    "Floor": Floor_forward,
+    "Ceil": Ceil_forward,
+    "RoiAlign": RoiAlign_forward,
+    "PPQDeviceSwitch": PPQDeviceSwitch_forward,
+    "Exp": Exp_forward,
+    "Softmax": Softmax_forward,
+    "Sigmoid": Sigmoid_forward,
+    "Greater": Greater_forward,
+    "Not": Not_forward,
+    "MMCVRoiAlign": MMCVRoiAlign_forward,
+    "Split": Split_forward,
+    "GreaterOrEqual": GreaterOrEqual_forward,
+    "LessOrEqual": LessOrEqual_forward,
+    "ReduceSum": ReduceSum_forward,
+    "ScatterElements": ScatterElements_forward,
+    "OneHot": Onehot_forward,
+    "Identity": Identity_forward,
+    "Tanh": Tanh_forward,
+    "Tan": Tan_forward,
 }

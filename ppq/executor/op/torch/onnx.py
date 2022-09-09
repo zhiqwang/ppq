@@ -16,4 +16,5 @@ ONNX_BACKEND_TABLE = DEFAULT_BACKEND_TABLE.copy()
 def Sample_Forward():
     return None
 
-ONNX_BACKEND_TABLE['Sample_Forward'] = Sample_Forward
+
+ONNX_BACKEND_TABLE["Sample_Forward"] = Sample_Forward

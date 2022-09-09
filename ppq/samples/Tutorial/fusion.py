@@ -3,38 +3,50 @@ from typing import Callable, Iterable
 import torch
 import torchvision
 
-from ppq import (BaseGraph, QuantizationOptimizationPass,
-                 QuantizationOptimizationPipeline, QuantizationSetting,
-                 TargetPlatform, TorchExecutor)
+from ppq import (
+    BaseGraph,
+    QuantizationOptimizationPass,
+    QuantizationOptimizationPipeline,
+    QuantizationSetting,
+    TargetPlatform,
+    TorchExecutor,
+)
 from ppq.api import ENABLE_CUDA_KERNEL
 from ppq.executor.torch import TorchExecutor
 from ppq.IR.quantize import QuantableOperation
 from ppq.IR.search import SearchableGraph
-from ppq.quantization.optim import (ParameterQuantizePass,
-                                    PassiveParameterQuantizePass,
-                                    QuantAlignmentPass, QuantizeRefinePass,
-                                    QuantizeSimplifyPass,
-                                    RuntimeCalibrationPass)
+from ppq.quantization.optim import (
+    ParameterQuantizePass,
+    PassiveParameterQuantizePass,
+    QuantAlignmentPass,
+    QuantizeRefinePass,
+    QuantizeSimplifyPass,
+    RuntimeCalibrationPass,
+)
 from ppq.quantization.quantizer import TensorRTQuantizer
 
 # ------------------------------------------------------------
 # 在这个例子中，我们将向你介绍如何自定义量化优化过程，以及如何手动调用优化过程
 # ------------------------------------------------------------
 
-BATCHSIZE   = 32
+BATCHSIZE = 32
 INPUT_SHAPE = [BATCHSIZE, 3, 224, 224]
-DEVICE      = 'cuda'
-PLATFORM    = TargetPlatform.TRT_INT8
+DEVICE = "cuda"
+PLATFORM = TargetPlatform.TRT_INT8
 
 # ------------------------------------------------------------
 # 和往常一样，我们要创建 calibration 数据，以及加载模型
 # ------------------------------------------------------------
 def load_calibration_dataset() -> Iterable:
     return [torch.rand(size=INPUT_SHAPE) for _ in range(32)]
+
+
 CALIBRATION = load_calibration_dataset()
+
 
 def collate_fn(batch: torch.Tensor) -> torch.Tensor:
     return batch.to(DEVICE)
+
 
 model = torchvision.models.mobilenet.mobilenet_v2(pretrained=True)
 model = model.to(DEVICE)
@@ -51,12 +63,13 @@ model = model.to(DEVICE)
 # 对于更为复杂的模式匹配，你可以参考 ppq.quantization.optim.refine.SwishFusionPass
 # ------------------------------------------------------------
 class MyFusion(QuantizationOptimizationPass):
-    def optimize(self, graph: BaseGraph, dataloader: Iterable,
-                 collate_fn: Callable, executor: TorchExecutor, **kwargs) -> None:
-        
+    def optimize(
+        self, graph: BaseGraph, dataloader: Iterable, collate_fn: Callable, executor: TorchExecutor, **kwargs
+    ) -> None:
+
         # 图融合过程往往由图模式匹配开始，让我们建立一个模式匹配引擎
         search_engine = SearchableGraph(graph=graph)
-        for pattern in search_engine.pattern_matching(patterns=['Conv', 'Clip'], edges=[[0, 1]], exclusive=True):
+        for pattern in search_engine.pattern_matching(patterns=["Conv", "Clip"], edges=[[0, 1]], exclusive=True):
             conv, relu = pattern
 
             # 匹配到图中的 conv - relu 对，接下来关闭不必要的量化点
@@ -72,6 +85,7 @@ class MyFusion(QuantizationOptimizationPass):
                 relu.input_quant_config[0].dominated_by = conv.output_quant_config[0]
                 relu.output_quant_config[0].dominated_by = conv.output_quant_config[0]
 
+
 # ------------------------------------------------------------
 # 自定义图融合的过程将会干预量化器逻辑，我们需要新建量化器
 # 此处我们继承 TensorRT Quantizer，算子的量化逻辑将使用 TensorRT 的配置
@@ -80,16 +94,21 @@ class MyFusion(QuantizationOptimizationPass):
 # ------------------------------------------------------------
 class MyQuantizer(TensorRTQuantizer):
     def build_quant_pipeline(self, setting: QuantizationSetting) -> QuantizationOptimizationPipeline:
-        return QuantizationOptimizationPipeline([
-            QuantizeRefinePass(),
-            QuantizeSimplifyPass(),
-            ParameterQuantizePass(),
-            MyFusion(name='My Optimization Procedure'),
-            RuntimeCalibrationPass(),
-            QuantAlignmentPass(),
-            PassiveParameterQuantizePass()])
+        return QuantizationOptimizationPipeline(
+            [
+                QuantizeRefinePass(),
+                QuantizeSimplifyPass(),
+                ParameterQuantizePass(),
+                MyFusion(name="My Optimization Procedure"),
+                RuntimeCalibrationPass(),
+                QuantAlignmentPass(),
+                PassiveParameterQuantizePass(),
+            ]
+        )
+
 
 from ppq.api import quantize_torch_model, register_network_quantizer
+
 register_network_quantizer(quantizer=MyQuantizer, platform=TargetPlatform.EXTENSION)
 
 # ------------------------------------------------------------
@@ -100,7 +119,13 @@ register_network_quantizer(quantizer=MyQuantizer, platform=TargetPlatform.EXTENS
 # ------------------------------------------------------------
 with ENABLE_CUDA_KERNEL():
     quantized = quantize_torch_model(
-        model=model, calib_dataloader=CALIBRATION,
-        calib_steps=32, input_shape=INPUT_SHAPE,
-        collate_fn=collate_fn, platform=TargetPlatform.EXTENSION,
-        onnx_export_file='model.onnx', device=DEVICE, verbose=0)
+        model=model,
+        calib_dataloader=CALIBRATION,
+        calib_steps=32,
+        input_shape=INPUT_SHAPE,
+        collate_fn=collate_fn,
+        platform=TargetPlatform.EXTENSION,
+        onnx_export_file="model.onnx",
+        device=DEVICE,
+        verbose=0,
+    )

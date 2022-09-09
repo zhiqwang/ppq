@@ -9,4 +9,5 @@ PPL_DSP_BACKEND_TABLE = DEFAULT_BACKEND_TABLE.copy()
 def Sample_Forward():
     return None
 
-PPL_DSP_BACKEND_TABLE['Sample_Function'] = Sample_Forward
+
+PPL_DSP_BACKEND_TABLE["Sample_Function"] = Sample_Forward
